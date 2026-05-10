@@ -4,6 +4,8 @@ Cast videos to your Samsung TV via DLNA.
 
 _Last updated: December 28th, 2025_
 
+[![CI](https://github.com/richandersonio/tv_cast/actions/workflows/ci.yml/badge.svg)](https://github.com/richandersonio/tv_cast/actions/workflows/ci.yml)
+
 ## Prerequisites
 
 **macOS:**
@@ -24,7 +26,7 @@ sudo apt install ffmpeg nmap  # Debian/Ubuntu
 ```bash
 git clone https://github.com/richandersonio/tv_cast.git
 cd tv_cast
-uv sync
+uv sync --dev
 brew bundle  # macOS only
 ```
 
@@ -74,6 +76,26 @@ uv run python tv_cast.py                        # Interactive menu
 | deno   | Optional | YouTube format extraction (suppresses warnings) |
 | nmap   | Optional | Deep network device scanning                    |
 
+## Safety & Responsibility
+
+TV Cast runs on your local network, starts a temporary HTTP server for HLS
+segments, and can download media from third-party URLs when you provide them.
+Use it only on trusted networks and only with media, devices, and accounts you
+are authorized to use.
+
+This project is provided without warranty or liability. See [LICENSE](LICENSE).
+
+## Contributing
+
+Contributions are welcome. Before opening a pull request, run:
+
+```bash
+uv run pytest
+```
+
+Please avoid committing generated files, local caches, credentials, or
+downloaded media.
+
 ## Project Structure
 
 ```
@@ -92,6 +114,7 @@ tv_cast/
 │   └── youtube.py       # YouTube downloading
 ├── pyproject.toml       # Python dependencies
 ├── Brewfile             # System dependencies
+├── tests/               # Unit tests
 └── README.md
 ```
 

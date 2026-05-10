@@ -1,8 +1,11 @@
 """Video casting to Samsung TVs via DLNA."""
 
 import asyncio
+import contextlib
+import html
 import http.server
 import os
+import socket
 import threading
 from typing import Optional, Tuple, Any
 
@@ -233,7 +236,16 @@ async def cast_video(video_path: str, duration: int = 0) -> bool:
     original_dir = os.getcwd()
     os.chdir(cache_dir)
 
-    server = http.server.HTTPServer((local_ip, HTTP_PORT), QuietHandler)
+    try:
+        server = http.server.HTTPServer((local_ip, HTTP_PORT), QuietHandler)
+    except OSError as e:
+        os.chdir(original_dir)
+        if e.errno in (48, 98):
+            print(f"❌ Port {HTTP_PORT} is already in use. Stop the other tv-cast process and try again.")
+        else:
+            print(f"❌ Could not start local stream server on {local_ip}:{HTTP_PORT}: {e}")
+        return False
+
     server_thread = threading.Thread(target=server.serve_forever)
     server_thread.daemon = True
     server_thread.start()
@@ -252,13 +264,15 @@ async def cast_video(video_path: str, duration: int = 0) -> bool:
 
         print(f"   ✅ Connected: {tv_name}")
 
+        escaped_video_name = html.escape(video_name, quote=True)
+        escaped_hls_url = html.escape(hls_url, quote=True)
         didl = f'''<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" 
                     xmlns:dc="http://purl.org/dc/elements/1.1/" 
                     xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/">
             <item id="0" parentID="-1" restricted="1">
-                <dc:title>{video_name}</dc:title>
+                <dc:title>{escaped_video_name}</dc:title>
                 <upnp:class>object.item.videoItem</upnp:class>
-                <res protocolInfo="http-get:*:application/vnd.apple.mpegurl:*">{hls_url}</res>
+                <res protocolInfo="http-get:*:application/vnd.apple.mpegurl:*">{escaped_hls_url}</res>
             </item>
         </DIDL-Lite>'''
 
@@ -320,6 +334,8 @@ async def cast_video(video_path: str, duration: int = 0) -> bool:
     finally:
         os.chdir(original_dir)
         server.shutdown()
+        with contextlib.suppress(socket.error):
+            server.server_close()
 
 
 def cleanup_on_exit() -> None:
