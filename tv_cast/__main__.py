@@ -1,6 +1,7 @@
 """Entry point for running as a module: python -m tv_cast"""
 
 import signal
+import sys
 from typing import Any
 
 from .config import load_config
@@ -17,7 +18,7 @@ def signal_handler(sig: int, frame: Any) -> None:
         _cleanup_done = True
         cleanup_on_exit()
     print("👋 Goodbye!")
-    exit(0)
+    sys.exit(0)
 
 
 def main() -> None:

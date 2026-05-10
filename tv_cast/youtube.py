@@ -17,7 +17,13 @@ def download_youtube(url: str) -> Optional[str]:
 
     print(f"📺 Fetching YouTube video info...")
 
-    with yt_dlp.YoutubeDL({'quiet': True, 'no_warnings': True}) as ydl:
+    base_opts = {
+        'quiet': True,
+        'no_warnings': True,
+        'noplaylist': True,
+    }
+
+    with yt_dlp.YoutubeDL(base_opts) as ydl:
         try:
             info = ydl.extract_info(url, download=False)
             video_id = info.get('id', 'video')
@@ -53,11 +59,10 @@ def download_youtube(url: str) -> Optional[str]:
             print(f"\r   ✅ Download complete!          ")
 
     ydl_opts = {
+        **base_opts,
         'format': 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best',
         'outtmpl': output_path,
         'progress_hooks': [progress_hook],
-        'quiet': True,
-        'no_warnings': True,
         'merge_output_format': 'mp4',
     }
 
@@ -107,4 +112,3 @@ def find_cached_youtube_videos() -> List[Dict[str, Any]]:
 
     videos.sort(key=lambda x: x['title'].lower())
     return videos
-
