@@ -4,8 +4,10 @@ import ipaddress
 import math
 import platform
 import re
+import signal
 import socket
 import subprocess
+import threading
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
@@ -145,6 +147,24 @@ def is_youtube_url(url: str) -> bool:
         return path == "/watch" or path.startswith(("/shorts/", "/live/"))
 
     return False
+
+
+def prompt_input(prompt: str = "") -> str:
+    """Read a line from stdin so Ctrl+C raises KeyboardInterrupt, even inside asyncio.run().
+
+    asyncio's runner replaces the SIGINT handler with one that only cancels the main
+    task, which a blocking input() call never observes. Temporarily restoring Python's
+    default handler makes Ctrl+C interrupt the prompt immediately.
+    """
+    if threading.current_thread() is not threading.main_thread():
+        return input(prompt)
+
+    previous = signal.getsignal(signal.SIGINT)
+    signal.signal(signal.SIGINT, signal.default_int_handler)
+    try:
+        return input(prompt)
+    finally:
+        signal.signal(signal.SIGINT, previous)
 
 
 def get_device_icon(device: dict[str, Any]) -> str:

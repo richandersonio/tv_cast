@@ -73,3 +73,43 @@ def test_main_preserves_default_sigint_behavior(monkeypatch):
     sigs = [s for s, _ in registered_signals]
     assert signal.SIGINT not in sigs
     assert signal.SIGTERM in sigs
+
+
+def test_ctrl_c_at_device_menu_prompt_returns_to_main_menu(monkeypatch):
+    """Ctrl+C inside asyncio.run() must interrupt the prompt instead of hanging."""
+
+    def fake_input(_prompt=""):
+        # Deliver a real SIGINT while "blocked" at the prompt.
+        signal.raise_signal(signal.SIGINT)
+        return "should-not-be-read"
+
+    monkeypatch.setattr(builtins, "input", fake_input)
+    handler_before = signal.getsignal(signal.SIGINT)
+
+    import asyncio
+
+    assert asyncio.run(menu.device_menu()) == "BACK"
+    assert signal.getsignal(signal.SIGINT) is handler_before
+
+
+def test_status_counts_only_finished_image_and_rio_videos(tmp_path, monkeypatch, capsys):
+    from tv_cast import conversion
+
+    image_dir = tmp_path / "image_videos"
+    image_dir.mkdir()
+    (image_dir / "photo_1_2_10s.mp4").write_bytes(b"x")
+    (image_dir / "photo_1_2_10s.123.tmp.mp4").write_bytes(b"x")
+    (image_dir / f"{conversion.RIO_CACHE_PREFIX}v1_15s.mp4").write_bytes(b"x")
+
+    monkeypatch.setattr(conversion, "IMAGE_CACHE_DIR", str(image_dir))
+    monkeypatch.setattr(conversion, "HLS_CACHE_DIR", str(tmp_path / "hls"))
+    monkeypatch.setattr(cli, "YOUTUBE_CACHE_DIR", str(tmp_path / "yt"))
+
+    assert conversion.count_image_cache_entries() == 2
+    assert conversion.count_image_cache_entries(include_rio=False) == 1
+    assert conversion.count_rio_cache_entries() == 1
+
+    cli.show_status()
+    out = capsys.readouterr().out
+    assert "Image videos: 1" in out
+    assert "RIO animations: 1" in out

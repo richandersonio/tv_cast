@@ -8,6 +8,7 @@ import tempfile
 import zlib
 
 from .config import IMAGE_CACHE_DIR
+from .conversion import RIO_CACHE_PREFIX
 
 # Bump version when visual styling changes so cached videos regenerate.
 _RIO_ASSET_VERSION = "v1"
@@ -267,7 +268,7 @@ def create_dancing_rio_video(duration: int = 15) -> str | None:
 
     os.makedirs(IMAGE_CACHE_DIR, exist_ok=True)
     output_path = os.path.join(
-        IMAGE_CACHE_DIR, f"rio_dancing_{_RIO_ASSET_VERSION}_{duration}s.mp4"
+        IMAGE_CACHE_DIR, f"{RIO_CACHE_PREFIX}{_RIO_ASSET_VERSION}_{duration}s.mp4"
     )
 
     if os.path.exists(output_path):
@@ -277,7 +278,7 @@ def create_dancing_rio_video(duration: int = 15) -> str | None:
     print(f"🕺 Generating {duration}s dancing RIO logo animation...")
 
     tmp_output = os.path.join(
-        IMAGE_CACHE_DIR, f"rio_dancing_{_RIO_ASSET_VERSION}_{duration}s.{os.getpid()}.tmp.mp4"
+        IMAGE_CACHE_DIR, f"{RIO_CACHE_PREFIX}{_RIO_ASSET_VERSION}_{duration}s.{os.getpid()}.tmp.mp4"
     )
 
     with tempfile.TemporaryDirectory(prefix="tv_cast_rio_") as assets_dir:

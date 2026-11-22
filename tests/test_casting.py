@@ -134,9 +134,11 @@ def test_cleanup_on_exit_noop_when_idle_and_stops_when_active(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_cast_video_uses_native_youtube_fast_path(monkeypatch):
+async def test_cast_video_native_youtube_stops_after_duration(monkeypatch):
     called_native = []
     called_download = False
+    stopped = []
+    restored = []
 
     async def fake_play_native(ip, video_id, samsung_token=None):
         called_native.append((ip, video_id))
@@ -147,16 +149,76 @@ async def test_cast_video_uses_native_youtube_fast_path(monkeypatch):
         called_download = True
         return None
 
+    async def fake_app_state(device, restore):
+        return casting.TVStateSnapshot(device_ip=device["ip"])  # Home screen: nothing to restore
+
+    async def fake_stop(ip):
+        stopped.append(ip)
+        return True
+
+    async def fake_restore(snapshot, **kwargs):
+        restored.append(snapshot)
+        return True
+
     monkeypatch.setattr(casting, "play_youtube_on_tv", fake_play_native)
     monkeypatch.setattr(casting, "download_youtube", fake_download)
+    monkeypatch.setattr(casting, "_capture_app_state", fake_app_state)
+    monkeypatch.setattr(casting, "stop_youtube_on_tv", fake_stop)
+    monkeypatch.setattr(casting, "restore_tv_state", fake_restore)
 
     old = config.get_current_device()
     config.set_current_device({"name": "TV", "ip": "192.168.4.22"})
     try:
-        ok = await casting.cast_video("https://www.youtube.com/watch?v=eNBqkc7V1nU")
+        ok = await casting.cast_video("https://www.youtube.com/watch?v=eNBqkc7V1nU", duration=1)
         assert ok is True
         assert called_native == [("192.168.4.22", "eNBqkc7V1nU")]
         assert not called_download
+        # Even with nothing to restore, the video must stop when the duration ends.
+        assert stopped == ["192.168.4.22"]
+        assert restored == []
+    finally:
+        config.set_current_device(old)
+
+
+@pytest.mark.asyncio
+async def test_cast_video_native_youtube_waits_for_ctrl_c_and_restores(monkeypatch):
+    stopped = []
+    restored = []
+    previous = casting.TVStateSnapshot(
+        device_ip="192.168.4.22", visible_app_id="3201907018807", visible_app_name="Netflix"
+    )
+
+    async def fake_play_native(ip, video_id, samsung_token=None):
+        return True
+
+    async def fake_app_state(device, restore):
+        return previous
+
+    async def fake_stop(ip):
+        stopped.append(ip)
+        return True
+
+    async def fake_restore(snapshot, **kwargs):
+        restored.append(snapshot)
+        return True
+
+    monkeypatch.setattr(casting, "play_youtube_on_tv", fake_play_native)
+    monkeypatch.setattr(casting, "_capture_app_state", fake_app_state)
+    monkeypatch.setattr(casting, "stop_youtube_on_tv", fake_stop)
+    monkeypatch.setattr(casting, "restore_tv_state", fake_restore)
+
+    old = config.get_current_device()
+    config.set_current_device({"name": "TV", "ip": "192.168.4.22"})
+    try:
+        task = asyncio.create_task(
+            casting.cast_video("https://www.youtube.com/watch?v=eNBqkc7V1nU", duration=0)
+        )
+        await asyncio.sleep(0.2)
+        assert not task.done(), "duration=0 should play until Ctrl+C"
+        task.cancel()  # Simulates asyncio.run's Ctrl+C handling
+        assert await task is True
+        assert stopped == ["192.168.4.22"]
+        assert restored == [previous]
     finally:
         config.set_current_device(old)
 
@@ -172,8 +234,12 @@ async def test_cast_video_falls_back_to_yt_dlp_when_native_youtube_fails(monkeyp
         called_download.append(url)
         return None  # Stop cleanly after proving fallback ran
 
+    async def fake_app_state(device, restore):
+        return None
+
     monkeypatch.setattr(casting, "play_youtube_on_tv", fake_play_native)
     monkeypatch.setattr(casting, "download_youtube", fake_download)
+    monkeypatch.setattr(casting, "_capture_app_state", fake_app_state)
 
     old = config.get_current_device()
     config.set_current_device({"name": "TV", "ip": "192.168.4.22"})
@@ -183,6 +249,28 @@ async def test_cast_video_falls_back_to_yt_dlp_when_native_youtube_fails(monkeyp
         assert called_download == ["https://www.youtube.com/watch?v=eNBqkc7V1nU"]
     finally:
         config.set_current_device(old)
+
+
+@pytest.mark.asyncio
+async def test_capture_previous_state_keeps_pre_native_app(monkeypatch):
+    """A failed native attempt that opened YouTube must not replace the user's app."""
+    pre_native = casting.TVStateSnapshot(
+        device_ip="192.168.4.22", visible_app_id="3201907018807", visible_app_name="Netflix"
+    )
+
+    async def fake_get_tv_state(ip, av_transport=None, extra_apps=None):
+        return casting.TVStateSnapshot(
+            device_ip=ip, visible_app_id="111299001912", visible_app_name="YouTube"
+        )
+
+    monkeypatch.setattr(casting, "get_tv_state", fake_get_tv_state)
+
+    snapshot = await casting._capture_previous_state(
+        {"ip": "192.168.4.22"}, av_transport=None, restore=True, app_state=pre_native
+    )
+    assert snapshot is not None
+    assert snapshot.visible_app_id == "3201907018807"
+    assert snapshot.visible_app_name == "Netflix"
 
 
 @pytest.mark.asyncio

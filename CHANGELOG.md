@@ -2,6 +2,14 @@
 
 Date-based history of key changes to `tv-cast`, newest first.
 
+## 2026-11-22
+
+- **Native YouTube casting — honours duration and Ctrl+C:** Videos played in the TV's YouTube app now stop when `-d` runs out, or on `Ctrl+C` when no duration is given, and then restore what was open. If the native cast fails, the fallback now restores your original app instead of YouTube.
+- **TV state & restore accuracy:** `--tv-state` and auto-restore keep app results that arrive before the probe time limit instead of discarding them all, and restore reports failure when the TV rejects an app launch.
+- **Interactive menus:** `Ctrl+C` at the device menu and the "switch TV" prompt returns straight to the menu instead of freezing until Enter.
+- **Config & cache safety:** The config file (with your TV pairing token) is now saved atomically, so an interrupted save can't corrupt it. Cache counts ignore leftover temporary files and list RIO animations separately from image videos.
+- **Repository workflow:** Removed the RioKM Git and PR protocol from `AGENTS.md`; this open-source repo doesn't use it.
+
 ## 2026-11-21
 
 - **TV status & auto-restore:** Added `--tv-state` to show what your Samsung TV is currently displaying (including running apps and the active YouTube video, channel, and timestamp) and `--tv-apps` to list installed apps. Casting now remembers what was open and automatically restores it afterward, including resuming YouTube videos where you left off (`--no-restore` to skip).
