@@ -1,42 +1,30 @@
 """Entry point for running as a module: python -m tv_cast"""
 
+import atexit
 import signal
 import sys
 from typing import Any
 
-from .config import load_config
 from .casting import cleanup_on_exit
 from .cli import run_cli
 
-_cleanup_done = False
 
-
-def signal_handler(sig: int, frame: Any) -> None:
-    """Handle Ctrl+C and termination signals."""
-    global _cleanup_done
-    if not _cleanup_done:
-        _cleanup_done = True
-        cleanup_on_exit()
-    print("👋 Goodbye!")
+def _sigterm_handler(sig: int, frame: Any) -> None:
+    """Exit cleanly on SIGTERM so atexit/finally hooks run outside signal context."""
     sys.exit(0)
 
 
 def main() -> None:
     """Main entry point."""
-    # Set up signal handlers
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
-
-    # Load configuration
-    load_config()
+    atexit.register(cleanup_on_exit)
+    # Leave SIGINT as Python's default handler so KeyboardInterrupt works properly
+    # for interactive menus, ffmpeg cancellation, and playback stopping.
+    signal.signal(signal.SIGTERM, _sigterm_handler)
 
     try:
         run_cli()
     except KeyboardInterrupt:
-        global _cleanup_done
-        if not _cleanup_done:
-            _cleanup_done = True
-            cleanup_on_exit()
+        cleanup_on_exit()
         print("👋 Goodbye!")
 
 
