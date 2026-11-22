@@ -125,10 +125,9 @@ def save_config() -> None:
     }
     # Write to a temp file and atomically replace, so an interrupted save never
     # leaves a truncated config (which would lose the TV pairing token).
+    # mkstemp already creates the file with owner-only (0600) permissions on POSIX.
     fd, tmp_path = tempfile.mkstemp(prefix=".config.", suffix=".tmp", dir=CONFIG_DIR)
     try:
-        if hasattr(os, "fchmod"):
-            os.fchmod(fd, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(config, f, indent=2)
             f.flush()

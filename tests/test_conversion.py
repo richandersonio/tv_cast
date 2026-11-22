@@ -166,6 +166,23 @@ def test_clear_cache_removes_all_cache_dirs(tmp_path, monkeypatch):
     assert not img.exists()
 
 
+def test_clear_cache_reports_rio_animations_separately(tmp_path, monkeypatch, capsys):
+    img = tmp_path / "img"
+    img.mkdir()
+    (img / "photo.mp4").write_bytes(b"mp4")
+    (img / f"{conversion.RIO_CACHE_PREFIX}15.mp4").write_bytes(b"mp4")
+    monkeypatch.setattr(conversion, "HLS_CACHE_DIR", str(tmp_path / "hls"))
+    monkeypatch.setattr(conversion, "YOUTUBE_CACHE_DIR", str(tmp_path / "yt"))
+    monkeypatch.setattr(conversion, "IMAGE_CACHE_DIR", str(img))
+
+    conversion.clear_cache()
+
+    out = capsys.readouterr().out
+    assert "Cleared 1 image video(s)" in out
+    assert "Cleared 1 RIO animation(s)" in out
+    assert not img.exists()
+
+
 @pytest.mark.skipif(
     shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None,
     reason="ffmpeg/ffprobe required for integration test",
@@ -267,3 +284,16 @@ def test_real_ffmpeg_hls_and_image_integration(tmp_path, monkeypatch):
     assert img_video is not None
     assert os.path.exists(img_video)
     assert conversion.image_to_video(str(png), duration=1) == img_video
+
+
+def test_cache_counters_ignore_temp_files_and_split_rio(tmp_path, monkeypatch):
+    image_dir = tmp_path / "image_videos"
+    image_dir.mkdir()
+    (image_dir / "photo_1_2_10s.mp4").write_bytes(b"x")
+    (image_dir / "photo_1_2_10s.123.tmp.mp4").write_bytes(b"x")
+    (image_dir / f"{conversion.RIO_CACHE_PREFIX}v1_15s.mp4").write_bytes(b"x")
+    monkeypatch.setattr(conversion, "IMAGE_CACHE_DIR", str(image_dir))
+
+    assert conversion.count_image_cache_entries() == 2
+    assert conversion.count_image_cache_entries(include_rio=False) == 1
+    assert conversion.count_rio_cache_entries() == 1

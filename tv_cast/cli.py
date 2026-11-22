@@ -424,7 +424,7 @@ Examples:
     parser.add_argument(
         "--clear-cache",
         action="store_true",
-        help="Clear cached HLS conversions",
+        help="Delete cached conversions, downloads and generated videos",
     )
 
     return parser

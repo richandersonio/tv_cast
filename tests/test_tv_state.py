@@ -377,6 +377,60 @@ async def test_get_tv_state_keeps_partial_app_results_when_probes_time_out():
         await runner.cleanup()
 
 
+async def test_get_tv_state_cancels_app_probes_when_caller_is_cancelled():
+    import asyncio
+
+    probes_started = asyncio.Event()
+    probes_cancelled: list[str] = []
+
+    async def handle_info(request):
+        return web.json_response({"device": {"PowerState": "on"}})
+
+    async def handle_app_get(request):
+        probes_started.set()
+        await asyncio.sleep(30)  # Never answers before the caller gives up
+        return web.json_response({}, status=404)
+
+    app = web.Application()
+    app.router.add_get("/api/v2/", handle_info)
+    app.router.add_get("/api/v2/applications/{app_id}", handle_app_get)
+    runner = web.AppRunner(app, shutdown_timeout=0.1)
+    await runner.setup()
+    site = web.TCPSite(runner, "127.0.0.1", 0)
+    await site.start()
+    port = site._server.sockets[0].getsockname()[1]
+
+    real_fetch = tv_state._fetch_app_status
+
+    async def tracking_fetch(session, base_url, app_id, name, semaphore):
+        try:
+            return await real_fetch(session, base_url, app_id, name, semaphore)
+        except asyncio.CancelledError:
+            probes_cancelled.append(app_id)
+            raise
+
+    apps = {f"app{i}": f"App {i}" for i in range(3)}
+    try:
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(tv_state, "_fetch_app_status", tracking_fetch)
+            task = asyncio.create_task(
+                tv_state.get_tv_state(
+                    "127.0.0.1",
+                    api_port=port,
+                    apps=apps,
+                    fetch_youtube=False,
+                    timeout=10.0,
+                )
+            )
+            await asyncio.wait_for(probes_started.wait(), timeout=5.0)
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        assert sorted(probes_cancelled) == sorted(apps)
+    finally:
+        await runner.cleanup()
+
+
 @pytest.mark.asyncio
 async def test_stop_youtube_on_tv_sends_lounge_stop_then_falls_back_to_closing_app():
     commands: list[str] = []
