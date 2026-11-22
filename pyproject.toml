@@ -25,9 +25,9 @@ classifiers = [
 ]
 dependencies = [
     "async-upnp-client>=0.38.0",
-    "aiohttp>=3.13.4",
-    "yt-dlp>=2026.2.21",
-    "zeroconf>=0.80.0",
+    "aiohttp>=3.14.4",
+    "yt-dlp>=2026.7.4",
+    "zeroconf>=0.149.16",
 ]
 
 [project.scripts]
@@ -40,7 +40,7 @@ Source = "https://github.com/richandersonio/tv_cast"
 
 [dependency-groups]
 dev = [
-    "pytest>=7.0.0",
+    "pytest>=9.0.3",
     "pytest-asyncio>=0.21.0",
     "ruff>=0.9.0",
 ]
@@ -54,6 +54,7 @@ packages = ["tv_cast"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+asyncio_default_fixture_loop_scope = "function"
 
 [tool.ruff]
 target-version = "py311"
