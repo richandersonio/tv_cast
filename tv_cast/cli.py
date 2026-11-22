@@ -2,11 +2,13 @@
 
 import argparse
 import asyncio
+import logging
 import os
 from collections.abc import Sequence
 
 from .casting import cast_live_rio, cast_video, get_av_transport, stop_playback
 from .config import (
+    APP_VERSION,
     YOUTUBE_CACHE_DIR,
     forget_device,
     get_current_device,
@@ -283,6 +285,18 @@ async def list_tv_apps_cli() -> None:
     print("\n✅ Saved app list for --tv-state and auto-restore.")
 
 
+def _configure_logging(verbose: bool) -> None:
+    """Send library diagnostics to stderr; user-facing output stays on stdout."""
+    logging.basicConfig(
+        level=logging.DEBUG if verbose else logging.WARNING,
+        format="%(levelname)s %(name)s.%(funcName)s: %(message)s",
+    )
+    if verbose:
+        # Keep third-party chatter out of tv-cast's own debug output.
+        for noisy in ("asyncio", "aiohttp", "async_upnp_client", "zeroconf"):
+            logging.getLogger(noisy).setLevel(logging.INFO)
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the CLI argument parser."""
     parser = argparse.ArgumentParser(
@@ -315,6 +329,15 @@ Examples:
     )
 
     parser.add_argument("video", nargs="?", help="Video file or YouTube URL to cast")
+    parser.add_argument(
+        "--version", action="version", version=f"%(prog)s {APP_VERSION}"
+    )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show debug logging, including errors from best-effort steps",
+    )
 
     # Casting options
     parser.add_argument(
@@ -413,6 +436,7 @@ def run_cli(argv: Sequence[str] | None = None) -> None:
 
     parser = build_parser()
     args = parser.parse_args(argv)
+    _configure_logging(verbose=args.verbose)
 
     # Handle commands in priority order
     restore = not args.no_restore

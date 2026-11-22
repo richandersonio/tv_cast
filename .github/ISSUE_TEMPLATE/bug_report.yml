@@ -1,0 +1,29 @@
+name: Bug report
+description: Something isn't working as expected
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you run, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Command output
+      description: Re-run with `--verbose` and paste the output. Remove any tokens or personal data.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: tv-cast version
+      description: Output of `uv run tv-cast --version`
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: OS, Python version and TV model
+      placeholder: macOS 15, Python 3.13, Samsung QN90B

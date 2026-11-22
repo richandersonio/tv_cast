@@ -9,6 +9,11 @@ Date-based history of key changes to `tv-cast`, newest first.
 - **Interactive menus:** `Ctrl+C` at the device menu and the "switch TV" prompt returns straight to the menu instead of freezing until Enter.
 - **Config & cache safety:** The config file (with your TV pairing token) is now saved atomically, so an interrupted save can't corrupt it. Cache counts ignore leftover temporary files and list RIO animations separately from image videos.
 - **Repository workflow:** Removed the RioKM Git and PR protocol from `AGENTS.md`; this open-source repo doesn't use it.
+- **CLI:** Added `--version`, plus `-v`/`--verbose` to show debug logs for errors that are normally skipped quietly. The version now comes from `pyproject.toml`, and the old `tv_cast.py` wrapper is gone, so use `uv run tv-cast`.
+- **Reliability fixes:** HLS conversion now always closes ffmpeg's output pipes, and failed casts no longer print raw tracebacks unless `--verbose` is set.
+- **Code quality & CI:** CI now runs lint, formatting and type checks, tests Python 3.11–3.13 against the lockfile, builds the package, and pins its GitHub Actions. Pre-commit hooks run the same checks locally.
+- **Tests & coverage:** Tests grew from 65 to 117 and now treat warnings as errors. Coverage rose from 57% to 72%, with a 70% minimum enforced.
+- **Project hygiene:** Added weekly Dependabot updates, `CONTRIBUTING.md`, `SECURITY.md`, and issue and PR templates.
 
 ## 2026-11-21
 

@@ -46,11 +46,13 @@ def test_safe_hls_handler_serves_hls_only_without_chdir(tmp_path):
         with pytest.raises(urllib.error.HTTPError) as exc_info:
             urllib.request.urlopen(f"http://127.0.0.1:{port}/")
         assert exc_info.value.code == 403
+        exc_info.value.close()
 
         # Non-HLS files must be forbidden
         with pytest.raises(urllib.error.HTTPError) as exc_info:
             urllib.request.urlopen(f"http://127.0.0.1:{port}/secret.txt")
         assert exc_info.value.code == 403
+        exc_info.value.close()
     finally:
         server.shutdown()
         server.server_close()

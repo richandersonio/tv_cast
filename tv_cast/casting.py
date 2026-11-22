@@ -5,6 +5,7 @@ import contextlib
 import functools
 import html
 import http.server
+import logging
 import os
 import socket
 import sys
@@ -13,7 +14,7 @@ import threading
 import time
 import urllib.request
 from collections import deque
-from typing import Any, ClassVar
+from typing import Any
 from urllib.parse import urljoin, urlparse
 
 from async_upnp_client.aiohttp import AiohttpRequester
@@ -46,6 +47,8 @@ from .utils import (
 )
 from .youtube import download_youtube
 
+logger = logging.getLogger(__name__)
+
 _ALLOWED_HLS_EXTENSIONS = frozenset({".m3u8", ".ts"})
 _active_playback_control_url: str | None = None
 
@@ -53,7 +56,7 @@ _active_playback_control_url: str | None = None
 class QuietHandler(http.server.SimpleHTTPRequestHandler):
     """HTTP handler that serves only HLS files from its configured directory."""
 
-    extensions_map: ClassVar[dict[str, str]] = {
+    extensions_map: dict[str, str] = {  # noqa: RUF012 - mirrors the base-class attribute
         **http.server.SimpleHTTPRequestHandler.extensions_map,
         ".m3u8": "application/vnd.apple.mpegurl",
         ".ts": "video/MP2T",
@@ -540,7 +543,7 @@ async def cast_video(
             stop = av_transport.action("Stop")
             await stop.async_call(InstanceID=0)
         except Exception:
-            pass
+            logger.debug("Best-effort step failed", exc_info=True)
 
         print("\n🎬 Loading video...")
         set_uri = av_transport.action("SetAVTransportURI")
@@ -595,7 +598,7 @@ async def cast_video(
             await stop.async_call(InstanceID=0)
             print("   ✅ Stopped")
         except Exception:
-            pass
+            logger.debug("Best-effort step failed", exc_info=True)
         _active_playback_control_url = None
         if previous_state is not None:
             dev = get_current_device()
@@ -607,9 +610,7 @@ async def cast_video(
 
     except Exception as e:
         print(f"❌ Error: {e}")
-        import traceback
-
-        traceback.print_exc()
+        logger.debug("Casting failed", exc_info=True)
         if playback_started:
             with contextlib.suppress(Exception):
                 stop = av_transport.action("Stop")
@@ -643,7 +644,7 @@ async def _drain_async_stream(
                 break
             buffer.append(line.decode("utf-8", errors="replace"))
     except Exception:
-        pass
+        logger.debug("Best-effort step failed", exc_info=True)
 
 
 async def _wait_for_live_playlist(
@@ -920,4 +921,4 @@ def cleanup_on_exit() -> None:
             pass
         print("   ✅ Stopped")
     except Exception:
-        pass
+        logger.debug("Best-effort step failed", exc_info=True)

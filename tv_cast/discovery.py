@@ -3,18 +3,21 @@
 import asyncio
 import concurrent.futures
 import ipaddress
+import logging
 import platform
 import re
 import subprocess
 import threading
 import time
-from typing import Any
+from typing import Any, TypeGuard
 from urllib.parse import urljoin, urlparse
 
 from .utils import get_hostname, get_local_ip, get_local_subnet, ping_host
 
+logger = logging.getLogger(__name__)
 
-def _is_usable_host_ip(ip: str | None) -> bool:
+
+def _is_usable_host_ip(ip: str | None) -> TypeGuard[str]:
     """Return True if IP is a unicast, non-multicast, non-broadcast, non-loopback address."""
     if not ip:
         return False
@@ -80,7 +83,7 @@ async def discover_dlna_devices(timeout: int = 5) -> list[dict[str, Any]]:
                         devices.append(entry)
                         print(f"   📺 {name} ({ip})")
                 except Exception:
-                    pass
+                    logger.debug("Best-effort step failed", exc_info=True)
             except (ValueError, AttributeError):
                 pass
 
@@ -101,7 +104,7 @@ async def discover_dlna_devices(timeout: int = 5) -> list[dict[str, Any]]:
             try:
                 await async_search(**search_kwargs)
             except Exception:
-                pass
+                logger.debug("Best-effort step failed", exc_info=True)
 
     return devices
 
@@ -232,7 +235,7 @@ def discover_mdns_devices(timeout: int = 5) -> list[dict[str, Any]]:
                 browser = ServiceBrowser(zc, service_type, listener)
                 browsers.append(browser)
             except Exception:
-                pass
+                logger.debug("Best-effort step failed", exc_info=True)
 
         time.sleep(timeout)
     finally:
@@ -396,8 +399,9 @@ def discover_network_hosts(
         try:
             for future in concurrent.futures.as_completed(futures, timeout=remaining):
                 try:
-                    ip = future.result(timeout=0.1)
-                    if ip and ip not in seen_ips:
+                    found_ip = future.result(timeout=0.1)
+                    if found_ip and found_ip not in seen_ips:
+                        ip = found_ip
                         seen_ips.add(ip)
                         hostname = (
                             get_hostname(ip) if time.monotonic() < deadline else None
@@ -414,7 +418,7 @@ def discover_network_hosts(
                             }
                         )
                 except Exception:
-                    pass
+                    logger.debug("Best-effort step failed", exc_info=True)
         except concurrent.futures.TimeoutError:
             pass
     finally:
@@ -457,18 +461,19 @@ async def discover_all_devices(timeout: int = 8) -> list[dict[str, Any]]:
                 timeout=dlna_timeout + 2,
             )
         except Exception:
-            pass
+            logger.debug("Best-effort step failed", exc_info=True)
 
         try:
             mdns_devices = await asyncio.wait_for(mdns_future, timeout=mdns_timeout + 2)
         except Exception:
-            pass
+            logger.debug("Best-effort step failed", exc_info=True)
 
         try:
             network_devices = await asyncio.wait_for(
                 network_future, timeout=network_timeout + 2
             )
         except Exception:
+            logger.debug("Best-effort step failed", exc_info=True)
             network_devices = list(partial_network_devices)
     finally:
         pool.shutdown(wait=False, cancel_futures=True)

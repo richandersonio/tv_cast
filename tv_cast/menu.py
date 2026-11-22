@@ -5,7 +5,6 @@ import os
 
 from .casting import cast_live_rio, cast_video, stop_playback
 from .config import (
-    APP_DATE,
     APP_VERSION,
     SAMPLE_YOUTUBE_TITLE,
     SAMPLE_YOUTUBE_URL,
@@ -288,7 +287,7 @@ def main_menu() -> str:
     current_device = get_current_device()
 
     print("=" * 60)
-    print(f"📺 Samsung TV Caster v{APP_VERSION} — {APP_DATE}")
+    print(f"📺 Samsung TV Caster v{APP_VERSION}")
     print("=" * 60)
 
     if current_device:

@@ -1,6 +1,7 @@
 """Video conversion to HLS format."""
 
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -13,6 +14,8 @@ from .config import (
     IMAGE_CACHE_DIR,
     YOUTUBE_CACHE_DIR,
 )
+
+logger = logging.getLogger(__name__)
 
 # Filename prefix of cached dancing RIO animations stored in IMAGE_CACHE_DIR.
 RIO_CACHE_PREFIX = "rio_dancing_"
@@ -87,7 +90,7 @@ def _drain_stream(stream, buffer: deque) -> None:
         for line in stream:
             buffer.append(line)
     except Exception:
-        pass
+        logger.debug("Best-effort step failed", exc_info=True)
 
 
 def count_hls_cache_entries() -> int:
@@ -237,96 +240,102 @@ def convert_to_hls(
         print("❌ ffmpeg not found. Please install ffmpeg and try again.")
         return None
 
-    stderr_lines: deque[str] = deque(maxlen=200)
-    stderr_thread = threading.Thread(
-        target=_drain_stream,
-        args=(process.stderr, stderr_lines),
-        daemon=True,
-    )
-    stderr_thread.start()
+    # Context manager closes the stdout/stderr pipes and reaps ffmpeg on every exit path.
+    with process:
+        stderr_lines: deque[str] = deque(maxlen=200)
+        stderr_thread = threading.Thread(
+            target=_drain_stream,
+            args=(process.stderr, stderr_lines),
+            daemon=True,
+        )
+        stderr_thread.start()
 
-    done_event = threading.Event()
-    cancel_watcher: threading.Thread | None = None
-    if cancel_event is not None:
+        done_event = threading.Event()
+        cancel_watcher: threading.Thread | None = None
+        if cancel_event is not None:
 
-        def _watch_cancel() -> None:
-            while not done_event.is_set():
-                if cancel_event.wait(timeout=0.05):
-                    if process.poll() is None:
-                        process.kill()
-                    return
+            def _watch_cancel() -> None:
+                while not done_event.is_set():
+                    if cancel_event.wait(timeout=0.05):
+                        if process.poll() is None:
+                            process.kill()
+                        return
 
-        cancel_watcher = threading.Thread(target=_watch_cancel, daemon=True)
-        cancel_watcher.start()
+            cancel_watcher = threading.Thread(target=_watch_cancel, daemon=True)
+            cancel_watcher.start()
 
-    last_percent = -1
+        last_percent = -1
 
-    try:
-        assert process.stdout is not None
-        for line in process.stdout:
-            if cancel_event is not None and cancel_event.is_set():
-                break
+        try:
+            assert process.stdout is not None
+            for line in process.stdout:
+                if cancel_event is not None and cancel_event.is_set():
+                    break
 
-            line = line.strip()
+                line = line.strip()
 
-            if line.startswith("out_time="):
-                try:
-                    time_str = line.split("=")[1]
-                    parts = time_str.replace("-", "0").split(":")
-                    if len(parts) == 3:
-                        h, m, s = parts
-                        current_seconds = int(h) * 3600 + int(m) * 60 + float(s)
+                if line.startswith("out_time="):
+                    try:
+                        time_str = line.split("=")[1]
+                        parts = time_str.replace("-", "0").split(":")
+                        if len(parts) == 3:
+                            h, m, s = parts
+                            current_seconds = int(h) * 3600 + int(m) * 60 + float(s)
 
-                        if duration > 0:
-                            percent = min(100, int((current_seconds / duration) * 100))
-                            if percent != last_percent:
-                                bar_len = 30
-                                filled = int(bar_len * percent / 100)
-                                bar = "█" * filled + "░" * (bar_len - filled)
-                                print(f"\r   [{bar}] {percent}%", end="", flush=True)
-                                last_percent = percent
-                except (ValueError, IndexError):
-                    pass
-    except KeyboardInterrupt:
-        done_event.set()
-        process.kill()
-        process.wait()
-        stderr_thread.join(timeout=1.0)
-        if cancel_watcher is not None:
-            cancel_watcher.join(timeout=1.0)
-        shutil.rmtree(tmp_dir, ignore_errors=True)
-        print("\n❌ Conversion cancelled")
-        return None
-
-    done_event.set()
-    if cancel_event is not None and cancel_event.is_set():
-        if process.poll() is None:
+                            if duration > 0:
+                                percent = min(
+                                    100, int((current_seconds / duration) * 100)
+                                )
+                                if percent != last_percent:
+                                    bar_len = 30
+                                    filled = int(bar_len * percent / 100)
+                                    bar = "█" * filled + "░" * (bar_len - filled)
+                                    print(
+                                        f"\r   [{bar}] {percent}%", end="", flush=True
+                                    )
+                                    last_percent = percent
+                    except (ValueError, IndexError):
+                        pass
+        except KeyboardInterrupt:
+            done_event.set()
             process.kill()
+            process.wait()
+            stderr_thread.join(timeout=1.0)
+            if cancel_watcher is not None:
+                cancel_watcher.join(timeout=1.0)
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            print("\n❌ Conversion cancelled")
+            return None
+
+        done_event.set()
+        if cancel_event is not None and cancel_event.is_set():
+            if process.poll() is None:
+                process.kill()
+            process.wait()
+            stderr_thread.join(timeout=1.0)
+            if cancel_watcher is not None:
+                cancel_watcher.join(timeout=1.0)
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            print("\n❌ Conversion cancelled")
+            return None
+
         process.wait()
-        stderr_thread.join(timeout=1.0)
+        stderr_thread.join(timeout=2.0)
         if cancel_watcher is not None:
             cancel_watcher.join(timeout=1.0)
-        shutil.rmtree(tmp_dir, ignore_errors=True)
-        print("\n❌ Conversion cancelled")
-        return None
 
-    process.wait()
-    stderr_thread.join(timeout=2.0)
-    if cancel_watcher is not None:
-        cancel_watcher.join(timeout=1.0)
+        if process.returncode != 0:
+            stderr = "".join(stderr_lines)
+            print(f"\n❌ Conversion failed: {stderr[-500:]}")
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            return None
 
-    if process.returncode != 0:
-        stderr = "".join(stderr_lines)
-        print(f"\n❌ Conversion failed: {stderr[-500:]}")
-        shutil.rmtree(tmp_dir, ignore_errors=True)
-        return None
+        if os.path.exists(cache_dir):
+            shutil.rmtree(cache_dir)
+        os.replace(tmp_dir, cache_dir)
 
-    if os.path.exists(cache_dir):
-        shutil.rmtree(cache_dir)
-    os.replace(tmp_dir, cache_dir)
-
-    print("\n   ✅ Done! (cached for next time)")
-    return final_playlist_path
+        print("\n   ✅ Done! (cached for next time)")
+        return final_playlist_path
 
 
 def image_to_video(image_path: str, duration: int = 10) -> str | None:
