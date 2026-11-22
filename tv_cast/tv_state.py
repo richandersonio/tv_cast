@@ -745,13 +745,17 @@ async def get_tv_state(
                     )
                     for app_id, name in app_map.items()
                 ]
-                done, pending = await asyncio.wait(
-                    probe_tasks, timeout=max(timeout * 3.0, 5.0)
-                )
-                for task in pending:
-                    task.cancel()
-                if pending:
-                    await asyncio.gather(*pending, return_exceptions=True)
+                try:
+                    done, _ = await asyncio.wait(
+                        probe_tasks, timeout=max(timeout * 3.0, 5.0)
+                    )
+                finally:
+                    # Cancel stragglers on timeout and when the caller is cancelled.
+                    pending = [t for t in probe_tasks if not t.done()]
+                    for task in pending:
+                        task.cancel()
+                    if pending:
+                        await asyncio.gather(*pending, return_exceptions=True)
                 for task in probe_tasks:
                     if (
                         task in done

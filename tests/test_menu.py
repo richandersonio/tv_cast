@@ -1,6 +1,8 @@
 """Tests for the interactive menus, driven by scripted keyboard input."""
 
+import asyncio
 import builtins
+import signal
 
 import pytest
 
@@ -56,6 +58,45 @@ def async_recorder(calls, name, result=None):
         return result
 
     return fake
+
+
+# --- file discovery & exit paths -------------------------------------------------
+
+
+def test_find_video_and_image_files_respect_directory_argument(tmp_path):
+    media = tmp_path / "media"
+    media.mkdir()
+    (media / "movie.mp4").write_bytes(b"12345")
+    (media / "photo.png").write_bytes(b"6789")
+    (media / "notes.txt").write_text("ignore", encoding="utf-8")
+
+    assert menu.find_video_files(str(media)) == [("movie.mp4", 5, False)]
+    assert menu.find_image_files(str(media)) == [("photo.png", 4)]
+
+
+async def test_menus_exit_cleanly_on_eof(monkeypatch):
+    script_input(monkeypatch)  # no answers: every prompt raises EOFError
+
+    assert menu.main_menu() == "QUIT"
+    assert menu.interactive_select() == "BACK"
+    assert menu.select_youtube_submenu() is None
+    assert menu.select_image_submenu() is None
+    assert await menu.device_menu() == "BACK"
+
+
+def test_ctrl_c_at_device_menu_prompt_returns_to_main_menu(monkeypatch):
+    """Ctrl+C inside asyncio.run() must interrupt the prompt instead of hanging."""
+
+    def fake_input(_prompt=""):
+        # Deliver a real SIGINT while "blocked" at the prompt.
+        signal.raise_signal(signal.SIGINT)
+        return "should-not-be-read"
+
+    monkeypatch.setattr(builtins, "input", fake_input)
+    handler_before = signal.getsignal(signal.SIGINT)
+
+    assert asyncio.run(menu.device_menu()) == "BACK"
+    assert signal.getsignal(signal.SIGINT) is handler_before
 
 
 # --- main menu -----------------------------------------------------------------

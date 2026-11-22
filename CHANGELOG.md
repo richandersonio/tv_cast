@@ -4,16 +4,13 @@ Date-based history of key changes to `tv-cast`, newest first.
 
 ## 2026-11-22
 
-- **Native YouTube casting — honours duration and Ctrl+C:** Videos played in the TV's YouTube app now stop when `-d` runs out, or on `Ctrl+C` when no duration is given, and then restore what was open. If the native cast fails, the fallback now restores your original app instead of YouTube.
-- **TV state & restore accuracy:** `--tv-state` and auto-restore keep app results that arrive before the probe time limit instead of discarding them all, and restore reports failure when the TV rejects an app launch.
-- **Interactive menus:** `Ctrl+C` at the device menu and the "switch TV" prompt returns straight to the menu instead of freezing until Enter.
-- **Config & cache safety:** The config file (with your TV pairing token) is now saved atomically, so an interrupted save can't corrupt it. Cache counts ignore leftover temporary files and list RIO animations separately from image videos.
-- **Repository workflow:** Removed the RioKM Git and PR protocol from `AGENTS.md`; this open-source repo doesn't use it.
-- **CLI:** Added `--version`, plus `-v`/`--verbose` to show debug logs for errors that are normally skipped quietly. The version now comes from `pyproject.toml`, and the old `tv_cast.py` wrapper is gone, so use `uv run tv-cast`.
-- **Reliability fixes:** HLS conversion now always closes ffmpeg's output pipes, and failed casts no longer print raw tracebacks unless `--verbose` is set.
-- **Code quality & CI:** CI now runs lint, formatting and type checks, tests Python 3.11–3.13 against the lockfile, builds the package, and pins its GitHub Actions. Pre-commit hooks run the same checks locally.
-- **Tests & coverage:** Tests grew from 65 to 117 and now treat warnings as errors. Coverage rose from 57% to 72%, with a 70% minimum enforced.
-- **Project hygiene:** Added weekly Dependabot updates, `CONTRIBUTING.md`, `SECURITY.md`, and issue and PR templates.
+- **CLI:** Added `--version`, and `-v`/`--verbose` to show debug logs for errors that are normally skipped quietly. Use `uv run tv-cast`; the old `tv_cast.py` wrapper is gone.
+- **Native YouTube casting — honours duration and Ctrl+C:** Videos played in the TV's YouTube app now stop when `-d` runs out, or on `Ctrl+C` when no duration is given, and then restore what was open. If the native cast fails, your original app is restored instead of YouTube.
+- **TV state & restore accuracy:** `--tv-state` and auto-restore keep app results that arrive in time instead of discarding them all, cancel slow app checks cleanly on `Ctrl+C`, and report failure when the TV rejects an app launch.
+- **Reliability:** `Ctrl+C` at device prompts returns straight to the menu. The config file (with your TV pairing token) is saved atomically, ffmpeg's output pipes are always closed, and failed casts only show tracebacks with `--verbose`.
+- **Cache reporting:** Cache counts ignore leftover temporary files, and `--status` and `--clear-cache` list RIO animations separately from image videos.
+- **Code quality & CI:** CI checks lint, formatting and types, tests Python 3.11–3.13 against the lockfile, and builds the package. 120 tests run with warnings treated as errors and a 70% coverage minimum (now 72%).
+- **Project hygiene:** Added weekly Dependabot updates, pre-commit hooks, `CONTRIBUTING.md`, `SECURITY.md`, and issue and PR templates.
 
 ## 2026-11-21
 
@@ -21,12 +18,8 @@ Date-based history of key changes to `tv-cast`, newest first.
 - **Instant native YouTube casting:** Casting a YouTube URL now plays directly inside the TV's YouTube app with no download wait, falling back to local `yt-dlp` + HLS streaming when needed.
 - **Dancing RIO logo (cached & live):** Added `--rio` (menu `r`) to cast a dancing RIO logo animation and `--rio-live` (menu `l`) to stream it continuously in real time until `Ctrl+C`.
 - **Reliability & cross-platform fixes:** Fixed `Ctrl+C` interruption and cleanup, `ffmpeg` conversion deadlocks and partial cache bugs, macOS TV discovery, Linux ping/ARP handling, IPv6/mDNS crashes, menu `EOF` loops, and input validation. Expanded automated tests from 5 to 54 and added `ruff` linting in CI.
-- **Security & dependency cleanup:** Removed unused dependencies (`pyatv`, `pillow`, `nmap`) and upgraded all remaining packages, resolving all 110 Dependabot alerts with zero known vulnerabilities. Tightened `~/.tv_cast` config permissions for stored TV pairing tokens.
-- **Repository workflow:** Added `CHANGELOG.md` and updated `AGENTS.md` to keep it current before every commit. [PR #2](https://github.com/richandersonio/tv_cast/pull/2).
-
-## 2026-10-31
-
-- **Repository workflow:** Added `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md` requiring the shared RioKM Git and PR standard before changes, commits, PRs, or merges. [PR #1](https://github.com/richandersonio/tv_cast/pull/1).
+- **Security & dependency cleanup:** Removed unused dependencies (`pyatv`, `pillow`, `nmap`) and upgraded all remaining packages, resolving all 110 Dependabot alerts. Tightened `~/.tv_cast` config permissions for stored TV pairing tokens.
+- **Changelog:** Added this `CHANGELOG.md`.
 
 ## 2026-05-09
 
