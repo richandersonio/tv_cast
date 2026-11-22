@@ -34,6 +34,7 @@ from .tv_state import (
     get_tv_state,
     play_youtube_on_tv,
     restore_tv_state,
+    stop_youtube_on_tv,
 )
 from .utils import (
     check_port,
@@ -41,6 +42,7 @@ from .utils import (
     format_host_for_url,
     get_local_ip,
     is_youtube_url,
+    prompt_input,
 )
 from .youtube import download_youtube
 
@@ -273,10 +275,9 @@ async def _scan_and_offer_alternatives(failed_ip: str, failed_name: str) -> bool
         print()
 
         try:
-            choice = (await asyncio.to_thread(
-                input,
-                f"Switch to a different TV? (1-{len(alternatives)}, or 0 to cancel): ",
-            )).strip()
+            choice = prompt_input(
+                f"Switch to a different TV? (1-{len(alternatives)}, or 0 to cancel): "
+            ).strip()
 
             if choice == '0' or choice.lower() in ('', 'n', 'no', 'q'):
                 print("   Keeping current device selection.")
@@ -332,12 +333,32 @@ async def stop_playback(interactive: bool | None = None) -> bool:
     return False
 
 
+async def _capture_app_state(
+    device: dict[str, Any] | None,
+    restore: bool,
+) -> TVStateSnapshot | None:
+    """Capture the TV's foreground app (without DLNA state) before casting."""
+    if not restore or not device or not device.get("ip"):
+        return None
+    cached_apps = device.get("installed_apps")
+    extra_apps = cached_apps if isinstance(cached_apps, dict) else None
+    snapshot = await get_tv_state(device["ip"], extra_apps=extra_apps)
+    if snapshot.visible_app_name:
+        print(f"   💾 Currently open: {snapshot.visible_app_name} (will restore after playback)")
+    return snapshot
+
+
 async def _capture_previous_state(
     device: dict[str, Any] | None,
     av_transport: Any,
     restore: bool,
+    app_state: TVStateSnapshot | None = None,
 ) -> TVStateSnapshot | None:
-    """Capture current TV app/DLNA state before casting if restore is enabled."""
+    """Capture current TV app/DLNA state before casting if restore is enabled.
+
+    When ``app_state`` is given (captured before an earlier cast attempt changed the
+    foreground app), its app fields are kept and only the DLNA state is refreshed.
+    """
     if not restore or not device or not device.get("ip"):
         return None
     cached_apps = device.get("installed_apps")
@@ -345,12 +366,32 @@ async def _capture_previous_state(
     snapshot = await get_tv_state(
         device["ip"], av_transport=av_transport, extra_apps=extra_apps
     )
-    if snapshot.visible_app_name:
+    if app_state is not None:
+        snapshot.visible_app_id = app_state.visible_app_id
+        snapshot.visible_app_name = app_state.visible_app_name
+        snapshot.running_apps = list(app_state.running_apps)
+        snapshot.youtube = app_state.youtube
+    elif snapshot.visible_app_name:
         print(f"   💾 Currently open: {snapshot.visible_app_name} (will restore after playback)")
-    elif snapshot.dlna_state == "PLAYING" and snapshot.dlna_uri:
+    if not snapshot.visible_app_name and snapshot.dlna_state == "PLAYING" and snapshot.dlna_uri:
         label = snapshot.dlna_title or snapshot.dlna_uri
         print(f"   💾 Currently playing DLNA: {label} (will restore after playback)")
     return snapshot if snapshot.has_restorable_state else None
+
+
+async def _wait_for_native_playback(duration: int) -> None:
+    """Wait for the requested duration, or until Ctrl+C when duration is 0."""
+    if duration > 0:
+        print(f"\n⏱️  Playing for {duration} seconds...")
+    else:
+        print("\n⏱️  Press Ctrl+C to stop and return to menu")
+    try:
+        if duration > 0:
+            await asyncio.sleep(duration)
+        else:
+            await asyncio.Event().wait()
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        _uncancel_current_task()
 
 
 async def cast_video(
@@ -372,37 +413,36 @@ async def cast_video(
     print("=" * 60)
 
     cancel_event = threading.Event()
+    pre_native_state: TVStateSnapshot | None = None
 
     if is_youtube_url(video_path):
         print(f"\n🎬 YouTube: {video_path}")
         yt_id = extract_youtube_video_id(video_path)
         if yt_id and current_device.get("ip"):
-            previous_yt_state: TVStateSnapshot | None = None
-            if duration > 0 and restore:
-                cached_apps = current_device.get("installed_apps")
-                extra_apps = cached_apps if isinstance(cached_apps, dict) else None
-                previous_yt_state = await get_tv_state(
-                    current_device["ip"], extra_apps=extra_apps
-                )
+            # Snapshot the TV *before* the native attempt: a failed attempt may still
+            # have launched the YouTube app, which must not be mistaken for the
+            # user's previous app when falling back to DLNA.
+            pre_cast_state = await _capture_app_state(current_device, restore=restore)
             played_natively = await play_youtube_on_tv(
                 current_device["ip"],
                 yt_id,
                 samsung_token=current_device.get("samsung_token"),
             )
             if played_natively:
-                if duration > 0:
-                    print(f"\n⏱️  Playing for {duration} seconds...")
-                    try:
-                        await asyncio.sleep(duration)
-                    except (KeyboardInterrupt, asyncio.CancelledError):
-                        _uncancel_current_task()
-                    if previous_yt_state is not None and previous_yt_state.has_restorable_state:
-                        await restore_tv_state(
-                            previous_yt_state,
-                            samsung_token=current_device.get("samsung_token"),
-                        )
+                await _wait_for_native_playback(duration)
+                print("\n⏹️  Stopping YouTube playback...")
+                if await stop_youtube_on_tv(current_device["ip"]):
+                    print("   ✅ Stopped")
+                else:
+                    print("   ⚠️  Could not stop YouTube playback on the TV")
+                if pre_cast_state is not None and pre_cast_state.has_restorable_state:
+                    await restore_tv_state(
+                        pre_cast_state,
+                        samsung_token=current_device.get("samsung_token"),
+                    )
                 return True
             print("   ⚠️  Native YouTube cast unavailable; falling back to yt-dlp + DLNA HLS...")
+            pre_native_state = pre_cast_state
 
         try:
             downloaded = await asyncio.to_thread(download_youtube, video_path, cancel_event)
@@ -442,7 +482,7 @@ async def cast_video(
 
     print(f"   ✅ Connected: {tv_name}")
     previous_state = await _capture_previous_state(
-        get_current_device(), av_transport, restore=restore
+        get_current_device(), av_transport, restore=restore, app_state=pre_native_state
     )
 
     local_ip = get_local_ip()

@@ -7,7 +7,6 @@ from .casting import cast_live_rio, cast_video, stop_playback
 from .config import (
     APP_DATE,
     APP_VERSION,
-    IMAGE_CACHE_DIR,
     SAMPLE_YOUTUBE_TITLE,
     SAMPLE_YOUTUBE_URL,
     YOUTUBE_CACHE_DIR,
@@ -17,10 +16,15 @@ from .config import (
     save_discovered_devices,
     set_current_device,
 )
-from .conversion import count_hls_cache_entries, image_to_video, is_cached
+from .conversion import (
+    count_hls_cache_entries,
+    count_image_cache_entries,
+    image_to_video,
+    is_cached,
+)
 from .discovery import discover_all_devices, discover_dlna_devices
 from .rio import create_dancing_rio_video
-from .utils import format_size, get_device_icon, is_youtube_url
+from .utils import format_size, get_device_icon, is_youtube_url, prompt_input
 from .youtube import find_cached_youtube_videos
 
 
@@ -281,8 +285,7 @@ def main_menu() -> str:
     cache_count = count_hls_cache_entries()
     if os.path.exists(YOUTUBE_CACHE_DIR):
         cache_count += len([f for f in os.listdir(YOUTUBE_CACHE_DIR) if f.endswith('.mp4')])
-    if os.path.exists(IMAGE_CACHE_DIR):
-        cache_count += len(os.listdir(IMAGE_CACHE_DIR))
+    cache_count += count_image_cache_entries()
 
     print("\n   1. 🎬 TV Playback - cast videos/images")
     print("   2. 📡 Network Devices - scan and select devices")
@@ -382,7 +385,7 @@ async def device_menu() -> str | None:
 
     while True:
         try:
-            choice = (await asyncio.to_thread(input, "Select option: ")).strip().lower()
+            choice = prompt_input("Select option: ").strip().lower()
 
             if choice == 'b' or choice == 'q':
                 return 'BACK'
@@ -404,9 +407,7 @@ async def device_menu() -> str | None:
                     print()
 
                     try:
-                        sel = (await asyncio.to_thread(
-                            input, f"Select device (1-{len(devices)}, or 0): "
-                        )).strip()
+                        sel = prompt_input(f"Select device (1-{len(devices)}, or 0): ").strip()
                         if sel != '0':
                             idx = int(sel) - 1
                             if 0 <= idx < len(devices):
@@ -435,9 +436,7 @@ async def device_menu() -> str | None:
                         print()
 
                         try:
-                            sel = (await asyncio.to_thread(
-                                input, f"Select device (1-{len(castable)}, or 0): "
-                            )).strip()
+                            sel = prompt_input(f"Select device (1-{len(castable)}, or 0): ").strip()
                             if sel != '0':
                                 idx = int(sel) - 1
                                 if 0 <= idx < len(castable):

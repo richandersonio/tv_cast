@@ -97,3 +97,26 @@ def test_set_current_device_preserves_pairing_metadata_for_same_ip(tmp_path, mon
     config.save_config()
     assert (cfg_file.stat().st_mode & 0o777) == 0o600
     assert (cfg_dir.stat().st_mode & 0o777) == 0o700
+
+
+def test_save_config_is_atomic_when_write_fails(tmp_path, monkeypatch):
+    cfg_file = tmp_path / "config.json"
+    monkeypatch.setattr(config, "CONFIG_DIR", str(tmp_path))
+    monkeypatch.setattr(config, "CONFIG_FILE", str(cfg_file))
+
+    config.set_current_device({"name": "TV", "ip": "192.168.1.50", "samsung_token": "tok-abc"})
+    config.set_discovered_devices([])
+    config.save_config()
+    original = cfg_file.read_text(encoding="utf-8")
+
+    def boom(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(config.json, "dump", boom)
+    config.set_current_device({"name": "Other", "ip": "192.168.1.51"})
+    with pytest.raises(OSError):
+        config.save_config()
+
+    # The previous config (and its pairing token) survives, and no temp files are left.
+    assert cfg_file.read_text(encoding="utf-8") == original
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["config.json"]

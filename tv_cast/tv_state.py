@@ -14,6 +14,8 @@ import aiohttp
 from .utils import format_host_for_url
 
 # Common Samsung Tizen Smart TV application IDs (queried via :8001/api/v2/applications/<id>).
+YOUTUBE_APP_ID = "111299001912"
+
 KNOWN_SAMSUNG_APPS: dict[str, str] = {
     "111299001912": "YouTube",
     "3201707014489": "YouTube TV",
@@ -422,21 +424,23 @@ async def get_youtube_now_playing(
         return None
 
 
-async def resume_youtube_via_lounge(
+async def _send_lounge_command(
     ip: str,
-    yt: YouTubeNowPlaying,
+    command: str,
+    fields: dict[str, str] | None = None,
     *,
+    screen_id: str | None = None,
+    client_id: str = "tv-cast-remote",
     dial_port: int = 8080,
     lounge_base: str = "https://www.youtube.com/api/lounge",
     timeout: float = 5.0,
 ) -> bool:
-    """Resume a previously playing YouTube video at its saved timestamp via Lounge."""
+    """Send one YouTube Lounge remote-control command (e.g. setPlaylist, stopVideo) to the TV."""
     host = format_host_for_url(ip)
     dial_url = f"http://{host}:{dial_port}/ws/apps/YouTube"
 
     try:
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=timeout)) as session:
-            screen_id = yt.screen_id
             with contextlib.suppress(Exception):
                 async with session.get(dial_url) as resp:
                     if resp.status == 200:
@@ -462,7 +466,7 @@ async def resume_youtube_via_lounge(
 
             base_params = {
                 "device": "REMOTE_CONTROL",
-                "id": "tv-cast-restore",
+                "id": client_id,
                 "name": "TV Cast",
                 "mdx-version": "3",
                 "loungeIdToken": lounge_token,
@@ -485,16 +489,9 @@ async def resume_youtube_via_lounge(
             if not sid or not gsid:
                 return False
 
-            form: dict[str, str] = {
-                "count": "1",
-                "ofs": "0",
-                "req0__sc": "setPlaylist",
-                "req0_videoId": yt.video_id,
-            }
-            if yt.current_time is not None and yt.current_time > 0:
-                form["req0_currentTime"] = f"{yt.current_time:.1f}"
-            if yt.list_id:
-                form["req0_listId"] = yt.list_id
+            form: dict[str, str] = {"count": "1", "ofs": "0", "req0__sc": command}
+            for key, value in (fields or {}).items():
+                form[f"req0_{key}"] = value
 
             async with session.post(
                 f"{lounge_base}/bc/bind",
@@ -510,6 +507,66 @@ async def resume_youtube_via_lounge(
                 return 200 <= resp.status < 300
     except Exception:
         return False
+
+
+async def resume_youtube_via_lounge(
+    ip: str,
+    yt: YouTubeNowPlaying,
+    *,
+    dial_port: int = 8080,
+    lounge_base: str = "https://www.youtube.com/api/lounge",
+    timeout: float = 5.0,
+) -> bool:
+    """Resume a previously playing YouTube video at its saved timestamp via Lounge."""
+    fields: dict[str, str] = {"videoId": yt.video_id}
+    if yt.current_time is not None and yt.current_time > 0:
+        fields["currentTime"] = f"{yt.current_time:.1f}"
+    if yt.list_id:
+        fields["listId"] = yt.list_id
+    return await _send_lounge_command(
+        ip,
+        "setPlaylist",
+        fields,
+        screen_id=yt.screen_id,
+        client_id="tv-cast-restore",
+        dial_port=dial_port,
+        lounge_base=lounge_base,
+        timeout=timeout,
+    )
+
+
+async def stop_youtube_on_tv(
+    ip: str,
+    *,
+    api_port: int = 8001,
+    dial_port: int = 8080,
+    lounge_base: str = "https://www.youtube.com/api/lounge",
+    timeout: float = 5.0,
+) -> bool:
+    """Stop the video playing in the TV's YouTube app (Lounge stopVideo, then close the app)."""
+    stopped = await _send_lounge_command(
+        ip,
+        "stopVideo",
+        client_id="tv-cast-stop",
+        dial_port=dial_port,
+        lounge_base=lounge_base,
+        timeout=timeout,
+    )
+    if stopped:
+        return True
+
+    host = format_host_for_url(ip)
+    for url in (
+        f"http://{host}:{api_port}/api/v2/applications/{YOUTUBE_APP_ID}",
+        f"http://{host}:{dial_port}/ws/apps/YouTube/run",
+    ):
+        with contextlib.suppress(Exception):
+            async with aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=timeout)
+            ) as session, session.delete(url) as resp:
+                if 200 <= resp.status < 300:
+                    return True
+    return False
 
 
 async def play_youtube_on_tv(
@@ -637,18 +694,25 @@ async def get_tv_state(
                         snapshot.model_name = device_info.get("modelName") or device_info.get("name")
 
             # 2. Query apps with bounded concurrency and an overall cap
+            # Keep whatever probes finished before the overall cap instead of discarding all.
             results: list[tuple[str, str, bool, bool] | None] = []
-            if samsung_api_reachable:
-                with contextlib.suppress(TimeoutError):
-                    results = await asyncio.wait_for(
-                        asyncio.gather(
-                            *(
-                                _fetch_app_status(session, base_url, app_id, name, semaphore)
-                                for app_id, name in app_map.items()
-                            )
-                        ),
-                        timeout=max(timeout * 3.0, 5.0),
+            if samsung_api_reachable and app_map:
+                probe_tasks = [
+                    asyncio.create_task(
+                        _fetch_app_status(session, base_url, app_id, name, semaphore)
                     )
+                    for app_id, name in app_map.items()
+                ]
+                done, pending = await asyncio.wait(
+                    probe_tasks, timeout=max(timeout * 3.0, 5.0)
+                )
+                for task in pending:
+                    task.cancel()
+                if pending:
+                    await asyncio.gather(*pending, return_exceptions=True)
+                for task in probe_tasks:
+                    if task in done and not task.cancelled() and task.exception() is None:
+                        results.append(task.result())
             seen_running_ids: set[str] = set()
             for item in results:
                 if item is None:
@@ -691,6 +755,7 @@ async def _launch_app_via_ws(
     scheme: str = "wss",
     ws_port: int = 8002,
     timeout: float = 5.0,
+    confirm_timeout: float = 2.0,
 ) -> bool:
     """Launch/foreground a Tizen app using authenticated WebSocket ed.apps.launch."""
     url = _build_remote_ws_url(ip, token=token, scheme=scheme, port=ws_port)
@@ -724,9 +789,44 @@ async def _launch_app_via_ws(
                     },
                 }
             )
-            return True
+            return await _await_launch_confirmation(ws, confirm_timeout)
     except Exception:
         return False
+
+
+async def _await_launch_confirmation(ws: Any, confirm_timeout: float) -> bool:
+    """Wait for the TV to acknowledge ed.apps.launch.
+
+    Returns True when the TV confirms the launch, False on an explicit error. Some
+    firmware never replies; in that case the launch is treated as sent but unconfirmed.
+    """
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + confirm_timeout
+    while True:
+        remaining = deadline - loop.time()
+        if remaining <= 0:
+            break
+        try:
+            msg = await asyncio.wait_for(ws.receive(), timeout=remaining)
+        except TimeoutError:
+            break
+        if msg.type in (aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
+            break
+        if msg.type != aiohttp.WSMsgType.TEXT:
+            continue
+        try:
+            payload = json.loads(msg.data)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(payload, dict):
+            continue
+        event = payload.get("event")
+        if event == "ms.error":
+            return False
+        if event == "ed.apps.launch":
+            return str(payload.get("data")) in ("200", "True", "true")
+    print("   ⚠️  Launch request sent; TV did not confirm it")
+    return True
 
 
 async def restore_tv_state(

@@ -7,7 +7,6 @@ from collections.abc import Sequence
 
 from .casting import cast_live_rio, cast_video, get_av_transport, stop_playback
 from .config import (
-    IMAGE_CACHE_DIR,
     YOUTUBE_CACHE_DIR,
     forget_device,
     get_current_device,
@@ -17,7 +16,13 @@ from .config import (
     save_discovered_devices,
     set_current_device,
 )
-from .conversion import clear_cache, count_hls_cache_entries, image_to_video
+from .conversion import (
+    clear_cache,
+    count_hls_cache_entries,
+    count_image_cache_entries,
+    count_rio_cache_entries,
+    image_to_video,
+)
 from .discovery import discover_all_devices, discover_dlna_devices
 from .menu import device_menu, main_menu, playback_menu_loop
 from .rio import create_dancing_rio_video
@@ -64,12 +69,13 @@ def show_status() -> None:
         yt_count = len([f for f in os.listdir(YOUTUBE_CACHE_DIR) if f.endswith('.mp4')])
     print(f"   YouTube downloads: {yt_count}")
 
-    img_count = 0
-    if os.path.exists(IMAGE_CACHE_DIR):
-        img_count = len(os.listdir(IMAGE_CACHE_DIR))
+    img_count = count_image_cache_entries(include_rio=False)
     print(f"   Image videos: {img_count}")
+    rio_count = count_rio_cache_entries()
+    if rio_count:
+        print(f"   RIO animations: {rio_count}")
 
-    if hls_count + yt_count + img_count > 0:
+    if hls_count + yt_count + img_count + rio_count > 0:
         print("\n   Use --clear-cache to clear all")
 
 

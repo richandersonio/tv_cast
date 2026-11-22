@@ -1,7 +1,9 @@
 """Configuration management and constants."""
 
+import contextlib
 import json
 import os
+import tempfile
 from typing import Any
 
 # Settings
@@ -109,11 +111,20 @@ def save_config() -> None:
         'device': make_json_serializable(_state['current_device']),
         'discovered_devices': make_json_serializable(_state['discovered_devices']),
     }
-    fd = os.open(CONFIG_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    # Write to a temp file and atomically replace, so an interrupted save never
+    # leaves a truncated config (which would lose the TV pairing token).
+    fd, tmp_path = tempfile.mkstemp(prefix=".config.", suffix=".tmp", dir=CONFIG_DIR)
     try:
+        if hasattr(os, "fchmod"):
+            os.fchmod(fd, 0o600)
         with os.fdopen(fd, 'w', encoding='utf-8') as f:
             json.dump(config, f, indent=2)
-    except Exception:
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, CONFIG_FILE)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.remove(tmp_path)
         raise
     try:
         os.chmod(CONFIG_FILE, 0o600)

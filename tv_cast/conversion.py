@@ -14,6 +14,9 @@ from .config import (
     YOUTUBE_CACHE_DIR,
 )
 
+# Filename prefix of cached dancing RIO animations stored in IMAGE_CACHE_DIR.
+RIO_CACHE_PREFIX = "rio_dancing_"
+
 
 def get_cache_dir(video_path: str) -> str:
     """Get cache directory for a video file."""
@@ -89,6 +92,31 @@ def count_hls_cache_entries() -> int:
     if not os.path.exists(HLS_CACHE_DIR):
         return 0
     return len([name for name in os.listdir(HLS_CACHE_DIR) if ".tmp." not in name])
+
+
+def _is_finished_video_file(name: str) -> bool:
+    return name.endswith(".mp4") and ".tmp." not in name
+
+
+def count_image_cache_entries(include_rio: bool = True) -> int:
+    """Count finished image videos (and, optionally, cached RIO animations)."""
+    if not os.path.exists(IMAGE_CACHE_DIR):
+        return 0
+    return len([
+        name for name in os.listdir(IMAGE_CACHE_DIR)
+        if _is_finished_video_file(name)
+        and (include_rio or not name.startswith(RIO_CACHE_PREFIX))
+    ])
+
+
+def count_rio_cache_entries() -> int:
+    """Count cached dancing RIO animations."""
+    if not os.path.exists(IMAGE_CACHE_DIR):
+        return 0
+    return len([
+        name for name in os.listdir(IMAGE_CACHE_DIR)
+        if _is_finished_video_file(name) and name.startswith(RIO_CACHE_PREFIX)
+    ])
 
 
 def convert_to_hls(
@@ -341,7 +369,7 @@ def clear_cache() -> None:
             cleared = True
 
     if os.path.exists(IMAGE_CACHE_DIR):
-        count = len(os.listdir(IMAGE_CACHE_DIR))
+        count = count_image_cache_entries()
         shutil.rmtree(IMAGE_CACHE_DIR)
         if count > 0:
             print(f"🗑️  Cleared {count} image video(s)")
