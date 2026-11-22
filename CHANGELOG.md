@@ -11,6 +11,7 @@ Date-based history of key changes to `tv-cast`, newest first.
 - **Cache reporting:** Cache counts ignore leftover temporary files, and `--status` and `--clear-cache` list RIO animations separately from image videos.
 - **Code quality & CI:** CI checks lint, formatting and types, tests Python 3.11–3.13 against the lockfile, and builds the package. 120 tests run with warnings treated as errors and a 70% coverage minimum (now 72%).
 - **Project hygiene:** Added weekly Dependabot updates, pre-commit hooks, `CONTRIBUTING.md`, `SECURITY.md`, and issue and PR templates.
+- **Legal notices:** The README now states that TV Cast is unofficial and not affiliated with Samsung, Google or YouTube, and that users are responsible for the content they cast or download. Tests use a placeholder YouTube ID instead of a real video.
 
 ## 2026-11-21
 
