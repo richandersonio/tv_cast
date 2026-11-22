@@ -25,8 +25,7 @@ def get_cache_dir(video_path: str) -> str:
     video_size = os.path.getsize(video_path)
 
     cache_key = f"{video_name}_{video_size}_{int(video_mtime)}"
-    cache_key = "".join(
-        c if c.isalnum() or c in "._-" else "_" for c in cache_key)
+    cache_key = "".join(c if c.isalnum() or c in "._-" else "_" for c in cache_key)
 
     return os.path.join(HLS_CACHE_DIR, cache_key)
 
@@ -46,7 +45,7 @@ def is_cached(video_path: str) -> tuple[bool, str]:
         if "#EXT-X-ENDLIST" not in playlist_content:
             return False, cache_dir
 
-        segments = [f for f in os.listdir(cache_dir) if f.endswith('.ts')]
+        segments = [f for f in os.listdir(cache_dir) if f.endswith(".ts")]
         if segments:
             return True, cache_dir
 
@@ -56,15 +55,19 @@ def is_cached(video_path: str) -> tuple[bool, str]:
 def check_video_codec(input_file: str) -> tuple[str, float]:
     """Check if video is H.264 and get duration."""
     probe_cmd = [
-        "ffprobe", "-v", "error",
-        "-select_streams", "v:0",
-        "-show_entries", "stream=codec_name:format=duration",
-        "-of", "json",
-        input_file
+        "ffprobe",
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "stream=codec_name:format=duration",
+        "-of",
+        "json",
+        input_file,
     ]
     try:
-        result = subprocess.run(
-            probe_cmd, capture_output=True, text=True, check=False)
+        result = subprocess.run(probe_cmd, capture_output=True, text=True, check=False)
     except FileNotFoundError:
         return "", 0.0
 
@@ -102,21 +105,27 @@ def count_image_cache_entries(include_rio: bool = True) -> int:
     """Count finished image videos (and, optionally, cached RIO animations)."""
     if not os.path.exists(IMAGE_CACHE_DIR):
         return 0
-    return len([
-        name for name in os.listdir(IMAGE_CACHE_DIR)
-        if _is_finished_video_file(name)
-        and (include_rio or not name.startswith(RIO_CACHE_PREFIX))
-    ])
+    return len(
+        [
+            name
+            for name in os.listdir(IMAGE_CACHE_DIR)
+            if _is_finished_video_file(name)
+            and (include_rio or not name.startswith(RIO_CACHE_PREFIX))
+        ]
+    )
 
 
 def count_rio_cache_entries() -> int:
     """Count cached dancing RIO animations."""
     if not os.path.exists(IMAGE_CACHE_DIR):
         return 0
-    return len([
-        name for name in os.listdir(IMAGE_CACHE_DIR)
-        if _is_finished_video_file(name) and name.startswith(RIO_CACHE_PREFIX)
-    ])
+    return len(
+        [
+            name
+            for name in os.listdir(IMAGE_CACHE_DIR)
+            if _is_finished_video_file(name) and name.startswith(RIO_CACHE_PREFIX)
+        ]
+    )
 
 
 def convert_to_hls(
@@ -148,43 +157,72 @@ def convert_to_hls(
     if can_copy:
         print(f"🚀 Fast remux to HLS (video is already {codec})...")
         cmd = [
-            "ffmpeg", "-y",
-            "-i", input_file,
-            "-c:v", "copy",
-            "-c:a", "aac",
-            "-b:a", "128k",
-            "-f", "hls",
-            "-hls_time", "4",
-            "-hls_list_size", "0",
-            "-hls_segment_filename", os.path.join(tmp_dir, "segment%03d.ts"),
-            "-progress", "pipe:1",
+            "ffmpeg",
+            "-y",
+            "-i",
+            input_file,
+            "-c:v",
+            "copy",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
+            "-f",
+            "hls",
+            "-hls_time",
+            "4",
+            "-hls_list_size",
+            "0",
+            "-hls_segment_filename",
+            os.path.join(tmp_dir, "segment%03d.ts"),
+            "-progress",
+            "pipe:1",
             tmp_playlist_path,
         ]
     else:
-        thread_label = f"{FFMPEG_THREADS} threads" if FFMPEG_THREADS > 0 else "auto threads"
+        thread_label = (
+            f"{FFMPEG_THREADS} threads" if FFMPEG_THREADS > 0 else "auto threads"
+        )
         print(f"🔄 Converting to HLS (using {thread_label}, ultrafast)...")
         cmd = [
-            "ffmpeg", "-y",
-            "-i", input_file,
-            "-c:v", "libx264",
-            "-pix_fmt", "yuv420p",
-            "-profile:v", "high",
-            "-level:v", "4.1",
-            "-preset", "ultrafast",
-            "-crf", "23",
+            "ffmpeg",
+            "-y",
+            "-i",
+            input_file,
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            "-profile:v",
+            "high",
+            "-level:v",
+            "4.1",
+            "-preset",
+            "ultrafast",
+            "-crf",
+            "23",
         ]
         if FFMPEG_THREADS > 0:
             cmd.extend(["-threads", str(FFMPEG_THREADS)])
-        cmd.extend([
-            "-c:a", "aac",
-            "-b:a", "128k",
-            "-f", "hls",
-            "-hls_time", "4",
-            "-hls_list_size", "0",
-            "-hls_segment_filename", os.path.join(tmp_dir, "segment%03d.ts"),
-            "-progress", "pipe:1",
-            tmp_playlist_path,
-        ])
+        cmd.extend(
+            [
+                "-c:a",
+                "aac",
+                "-b:a",
+                "128k",
+                "-f",
+                "hls",
+                "-hls_time",
+                "4",
+                "-hls_list_size",
+                "0",
+                "-hls_segment_filename",
+                os.path.join(tmp_dir, "segment%03d.ts"),
+                "-progress",
+                "pipe:1",
+                tmp_playlist_path,
+            ]
+        )
 
     try:
         process = subprocess.Popen(
@@ -210,6 +248,7 @@ def convert_to_hls(
     done_event = threading.Event()
     cancel_watcher: threading.Thread | None = None
     if cancel_event is not None:
+
         def _watch_cancel() -> None:
             while not done_event.is_set():
                 if cancel_event.wait(timeout=0.05):
@@ -239,14 +278,12 @@ def convert_to_hls(
                         current_seconds = int(h) * 3600 + int(m) * 60 + float(s)
 
                         if duration > 0:
-                            percent = min(
-                                100, int((current_seconds / duration) * 100))
+                            percent = min(100, int((current_seconds / duration) * 100))
                             if percent != last_percent:
                                 bar_len = 30
                                 filled = int(bar_len * percent / 100)
                                 bar = "█" * filled + "░" * (bar_len - filled)
-                                print(f"\r   [{bar}] {percent}%",
-                                      end="", flush=True)
+                                print(f"\r   [{bar}] {percent}%", end="", flush=True)
                                 last_percent = percent
                 except (ValueError, IndexError):
                     pass
@@ -306,8 +343,7 @@ def image_to_video(image_path: str, duration: int = 10) -> str | None:
     image_mtime = os.path.getmtime(image_path)
     image_size = os.path.getsize(image_path)
     cache_key = f"{image_name}_{image_size}_{int(image_mtime)}_{duration}s"
-    cache_key = "".join(
-        c if c.isalnum() or c in "._-" else "_" for c in cache_key)
+    cache_key = "".join(c if c.isalnum() or c in "._-" else "_" for c in cache_key)
     output_path = os.path.join(IMAGE_CACHE_DIR, f"{cache_key}.mp4")
 
     if os.path.exists(output_path):
@@ -321,15 +357,24 @@ def image_to_video(image_path: str, duration: int = 10) -> str | None:
     )
 
     cmd = [
-        "ffmpeg", "-y",
-        "-loop", "1",
-        "-i", image_path,
-        "-c:v", "libx264",
-        "-t", str(duration),
-        "-pix_fmt", "yuv420p",
-        "-vf", "scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080",
-        "-r", "30",
-        "-preset", "ultrafast",
+        "ffmpeg",
+        "-y",
+        "-loop",
+        "1",
+        "-i",
+        image_path,
+        "-c:v",
+        "libx264",
+        "-t",
+        str(duration),
+        "-pix_fmt",
+        "yuv420p",
+        "-vf",
+        "scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080",
+        "-r",
+        "30",
+        "-preset",
+        "ultrafast",
         tmp_output_path,
     ]
 
@@ -361,8 +406,7 @@ def clear_cache() -> None:
         cleared = True
 
     if os.path.exists(YOUTUBE_CACHE_DIR):
-        count = len([f for f in os.listdir(
-            YOUTUBE_CACHE_DIR) if f.endswith('.mp4')])
+        count = len([f for f in os.listdir(YOUTUBE_CACHE_DIR) if f.endswith(".mp4")])
         shutil.rmtree(YOUTUBE_CACHE_DIR)
         if count > 0:
             print(f"🗑️  Cleared {count} YouTube download(s)")

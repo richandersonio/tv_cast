@@ -92,7 +92,9 @@ def test_ctrl_c_at_device_menu_prompt_returns_to_main_menu(monkeypatch):
     assert signal.getsignal(signal.SIGINT) is handler_before
 
 
-def test_status_counts_only_finished_image_and_rio_videos(tmp_path, monkeypatch, capsys):
+def test_status_counts_only_finished_image_and_rio_videos(
+    tmp_path, monkeypatch, capsys
+):
     from tv_cast import conversion
 
     image_dir = tmp_path / "image_videos"

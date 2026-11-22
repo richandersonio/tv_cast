@@ -18,7 +18,9 @@ def test_sanitize_video_id_prevents_path_traversal():
     assert fallback.isalnum()
 
 
-def test_download_youtube_sanitizes_id_and_escapes_percent_in_outtmpl(tmp_path, monkeypatch):
+def test_download_youtube_sanitizes_id_and_escapes_percent_in_outtmpl(
+    tmp_path, monkeypatch
+):
     yt_dir = tmp_path / "cache%100"
     monkeypatch.setattr(youtube, "YOUTUBE_CACHE_DIR", str(yt_dir))
 
@@ -73,12 +75,21 @@ def test_download_youtube_cancels_cleanly_via_cancel_event(tmp_path, monkeypatch
         def download(self, urls):
             cancel_event.set()
             for hook in self.opts.get("progress_hooks", []):
-                hook({"status": "downloading", "_percent_str": "1%", "_speed_str": "1MiB/s"})
+                hook(
+                    {
+                        "status": "downloading",
+                        "_percent_str": "1%",
+                        "_speed_str": "1MiB/s",
+                    }
+                )
             raise AssertionError("progress hook should have aborted download")
 
     monkeypatch.setitem(sys.modules, "yt_dlp", SimpleNamespace(YoutubeDL=FakeYoutubeDL))
 
-    assert youtube.download_youtube("https://youtu.be/abc123", cancel_event=cancel_event) is None
+    assert (
+        youtube.download_youtube("https://youtu.be/abc123", cancel_event=cancel_event)
+        is None
+    )
 
 
 def test_find_cached_youtube_videos_uses_removesuffix(tmp_path, monkeypatch):

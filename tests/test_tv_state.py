@@ -9,9 +9,7 @@ async def test_get_and_restore_tv_state_with_mock_samsung_api():
     restored_apps: list[str] = []
 
     async def handle_info(request):
-        return web.json_response(
-            {"device": {"PowerState": "on", "modelName": "QN90C"}}
-        )
+        return web.json_response({"device": {"PowerState": "on", "modelName": "QN90C"}})
 
     async def handle_app_get(request):
         app_id = request.match_info["app_id"]
@@ -65,7 +63,11 @@ async def test_get_and_restore_tv_state_with_mock_samsung_api():
         discovered = await tv_state.discover_installed_apps_via_rest(
             "127.0.0.1",
             api_port=port,
-            catalog={"111299001912": "YouTube", "3201907018807": "Netflix", "999": "Missing"},
+            catalog={
+                "111299001912": "YouTube",
+                "3201907018807": "Netflix",
+                "999": "Missing",
+            },
         )
         assert discovered == [
             ("3201907018807", "Netflix", True, False),
@@ -80,7 +82,9 @@ async def test_pair_and_fetch_installed_apps_via_websocket():
     async def handle_ws(request):
         ws = web.WebSocketResponse()
         await ws.prepare(request)
-        await ws.send_json({"event": "ms.channel.connect", "data": {"token": "tok-123"}})
+        await ws.send_json(
+            {"event": "ms.channel.connect", "data": {"token": "tok-123"}}
+        )
         async for msg in ws:
             payload = msg.json()
             if payload.get("params", {}).get("event") == "ed.installedApp.get":
@@ -171,9 +175,9 @@ async def test_get_and_resume_youtube_now_playing_via_dial_and_lounge():
         xml = (
             '<?xml version="1.0" encoding="UTF-8"?>'
             '<service xmlns="urn:dial-multiscreen-org:schemas:dial">'
-            '<name>YouTube</name><state>running</state>'
-            '<additionalData><screenId>screen-abc-123</screenId></additionalData>'
-            '</service>'
+            "<name>YouTube</name><state>running</state>"
+            "<additionalData><screenId>screen-abc-123</screenId></additionalData>"
+            "</service>"
         )
         return web.Response(text=xml, content_type="application/xml")
 
@@ -316,10 +320,17 @@ async def test_restore_reports_failure_when_tv_rejects_ws_launch(capsys):
     runner, port = await _start_ws_launch_server({"event": "ms.error", "data": {}})
     try:
         snapshot = tv_state.TVStateSnapshot(
-            device_ip="127.0.0.1", visible_app_id="3201907018807", visible_app_name="Netflix"
+            device_ip="127.0.0.1",
+            visible_app_id="3201907018807",
+            visible_app_name="Netflix",
         )
         ok = await tv_state.restore_tv_state(
-            snapshot, api_port=1, samsung_token="tok", ws_scheme="ws", ws_port=port, timeout=2.0
+            snapshot,
+            api_port=1,
+            samsung_token="tok",
+            ws_scheme="ws",
+            ws_port=port,
+            timeout=2.0,
         )
         assert ok is False
         out = capsys.readouterr().out
@@ -409,7 +420,11 @@ async def test_stop_youtube_on_tv_sends_lounge_stop_then_falls_back_to_closing_a
     base = f"http://127.0.0.1:{port}"
 
     try:
-        kwargs = {"api_port": port, "dial_port": port, "lounge_base": f"{base}/api/lounge"}
+        kwargs = {
+            "api_port": port,
+            "dial_port": port,
+            "lounge_base": f"{base}/api/lounge",
+        }
         assert await tv_state.stop_youtube_on_tv("127.0.0.1", **kwargs) is True
         assert commands == ["stopVideo"]
         assert deleted == []

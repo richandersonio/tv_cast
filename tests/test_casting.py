@@ -15,7 +15,9 @@ from tv_cast import casting, config, conversion
 
 
 def test_safe_hls_handler_serves_hls_only_without_chdir(tmp_path):
-    (tmp_path / "playlist.m3u8").write_text("#EXTM3U\n#EXT-X-ENDLIST\n", encoding="utf-8")
+    (tmp_path / "playlist.m3u8").write_text(
+        "#EXTM3U\n#EXT-X-ENDLIST\n", encoding="utf-8"
+    )
     (tmp_path / "segment000.ts").write_bytes(b"ts-bytes")
     (tmp_path / "secret.txt").write_text("top-secret", encoding="utf-8")
 
@@ -58,7 +60,9 @@ def test_safe_hls_handler_serves_hls_only_without_chdir(tmp_path):
 
 def test_resolve_control_url_handles_default_port_ipv6_and_saved_control_url():
     assert (
-        casting._resolve_control_url({"ip": "192.168.1.50", "location": "http://192.168.1.50/dmr"})
+        casting._resolve_control_url(
+            {"ip": "192.168.1.50", "location": "http://192.168.1.50/dmr"}
+        )
         == "http://192.168.1.50:80/upnp/control/AVTransport1"
     )
     assert (
@@ -66,17 +70,21 @@ def test_resolve_control_url_handles_default_port_ipv6_and_saved_control_url():
         == "http://[::1]:9197/upnp/control/AVTransport1"
     )
     assert (
-        casting._resolve_control_url({
-            "ip": "192.168.1.50",
-            "location": "http://192.168.1.50:9197/dmr",
-            "control_url": "http://192.168.1.50:9197/custom/AVT",
-        })
+        casting._resolve_control_url(
+            {
+                "ip": "192.168.1.50",
+                "location": "http://192.168.1.50:9197/dmr",
+                "control_url": "http://192.168.1.50:9197/custom/AVT",
+            }
+        )
         == "http://192.168.1.50:9197/custom/AVT"
     )
 
 
 @pytest.mark.asyncio
-async def test_cast_video_cancellation_signals_converter_and_uncancels(tmp_path, monkeypatch):
+async def test_cast_video_cancellation_signals_converter_and_uncancels(
+    tmp_path, monkeypatch
+):
     video = tmp_path / "video.mp4"
     video.write_bytes(b"data")
 
@@ -127,7 +135,9 @@ def test_cleanup_on_exit_noop_when_idle_and_stops_when_active(monkeypatch):
     assert sent_urls == []
 
     # Active -> sends Stop and clears state
-    casting._active_playback_control_url = "http://192.168.1.50:9197/upnp/control/AVTransport1"
+    casting._active_playback_control_url = (
+        "http://192.168.1.50:9197/upnp/control/AVTransport1"
+    )
     casting.cleanup_on_exit()
     assert sent_urls == ["http://192.168.1.50:9197/upnp/control/AVTransport1"]
     assert casting._active_playback_control_url is None
@@ -150,7 +160,9 @@ async def test_cast_video_native_youtube_stops_after_duration(monkeypatch):
         return None
 
     async def fake_app_state(device, restore):
-        return casting.TVStateSnapshot(device_ip=device["ip"])  # Home screen: nothing to restore
+        return casting.TVStateSnapshot(
+            device_ip=device["ip"]
+        )  # Home screen: nothing to restore
 
     async def fake_stop(ip):
         stopped.append(ip)
@@ -169,7 +181,9 @@ async def test_cast_video_native_youtube_stops_after_duration(monkeypatch):
     old = config.get_current_device()
     config.set_current_device({"name": "TV", "ip": "192.168.4.22"})
     try:
-        ok = await casting.cast_video("https://www.youtube.com/watch?v=eNBqkc7V1nU", duration=1)
+        ok = await casting.cast_video(
+            "https://www.youtube.com/watch?v=eNBqkc7V1nU", duration=1
+        )
         assert ok is True
         assert called_native == [("192.168.4.22", "eNBqkc7V1nU")]
         assert not called_download
@@ -185,7 +199,9 @@ async def test_cast_video_native_youtube_waits_for_ctrl_c_and_restores(monkeypat
     stopped = []
     restored = []
     previous = casting.TVStateSnapshot(
-        device_ip="192.168.4.22", visible_app_id="3201907018807", visible_app_name="Netflix"
+        device_ip="192.168.4.22",
+        visible_app_id="3201907018807",
+        visible_app_name="Netflix",
     )
 
     async def fake_play_native(ip, video_id, samsung_token=None):
@@ -211,7 +227,9 @@ async def test_cast_video_native_youtube_waits_for_ctrl_c_and_restores(monkeypat
     config.set_current_device({"name": "TV", "ip": "192.168.4.22"})
     try:
         task = asyncio.create_task(
-            casting.cast_video("https://www.youtube.com/watch?v=eNBqkc7V1nU", duration=0)
+            casting.cast_video(
+                "https://www.youtube.com/watch?v=eNBqkc7V1nU", duration=0
+            )
         )
         await asyncio.sleep(0.2)
         assert not task.done(), "duration=0 should play until Ctrl+C"
@@ -255,7 +273,9 @@ async def test_cast_video_falls_back_to_yt_dlp_when_native_youtube_fails(monkeyp
 async def test_capture_previous_state_keeps_pre_native_app(monkeypatch):
     """A failed native attempt that opened YouTube must not replace the user's app."""
     pre_native = casting.TVStateSnapshot(
-        device_ip="192.168.4.22", visible_app_id="3201907018807", visible_app_name="Netflix"
+        device_ip="192.168.4.22",
+        visible_app_id="3201907018807",
+        visible_app_name="Netflix",
     )
 
     async def fake_get_tv_state(ip, av_transport=None, extra_apps=None):
@@ -370,7 +390,10 @@ async def test_full_local_dlna_cast_and_stop_integration(tmp_path, monkeypatch):
             start = body.index("<CurrentURI>") + len("<CurrentURI>")
             end = body.index("</CurrentURI>")
             uri = body[start:end]
-            async with aiohttp.ClientSession() as session, session.get(uri, timeout=aiohttp.ClientTimeout(total=3)) as resp:
+            async with (
+                aiohttp.ClientSession() as session,
+                session.get(uri, timeout=aiohttp.ClientTimeout(total=3)) as resp,
+            ):
                 fetched_playlist.append(await resp.text())
             resp_action = "SetAVTransportURIResponse"
         elif "Play" in soap_action:
@@ -404,12 +427,24 @@ async def test_full_local_dlna_cast_and_stop_integration(tmp_path, monkeypatch):
     await asyncio.to_thread(
         subprocess.run,
         [
-            "ffmpeg", "-y",
-            "-f", "lavfi", "-i", "color=c=black:s=320x240:d=1",
-            "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
-            "-t", "1",
-            "-c:v", "libx264", "-pix_fmt", "yuv420p",
-            "-c:a", "aac",
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=black:s=320x240:d=1",
+            "-f",
+            "lavfi",
+            "-i",
+            "anullsrc=r=44100:cl=stereo",
+            "-t",
+            "1",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
             str(sample_mp4),
         ],
         check=True,
@@ -417,14 +452,16 @@ async def test_full_local_dlna_cast_and_stop_integration(tmp_path, monkeypatch):
     )
 
     old_device = config.get_current_device()
-    config.set_current_device({
-        "name": "Mock Samsung TV",
-        "ip": "127.0.0.1",
-        "port": tv_port,
-        "location": f"http://127.0.0.1:{tv_port}/dmr",
-        "type": "dlna",
-        "castable": True,
-    })
+    config.set_current_device(
+        {
+            "name": "Mock Samsung TV",
+            "ip": "127.0.0.1",
+            "port": tv_port,
+            "location": f"http://127.0.0.1:{tv_port}/dmr",
+            "type": "dlna",
+            "castable": True,
+        }
+    )
 
     try:
         ok = await casting.cast_video(str(sample_mp4), duration=1, interactive=False)
