@@ -112,6 +112,18 @@ Please report security issues privately as described in
 Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and
 the checks every pull request must pass.
 
+## Disclaimer
+
+TV Cast is an independent, unofficial project. It is not affiliated with,
+endorsed by or sponsored by Samsung, Google, YouTube or the Digital Living
+Network Alliance. Samsung, YouTube, DLNA and other names are trademarks of
+their respective owners and are used here only to describe compatibility.
+
+You are responsible for how you use TV Cast. Only cast or download content you
+own or have permission to use, and follow the terms of service of any site you
+download from, including YouTube's. TV Cast is provided "as is", without
+warranty of any kind; see the [LICENSE](LICENSE).
+
 ## License
 
 [MIT](LICENSE)
