@@ -2,8 +2,6 @@
 
 Cast videos to your Samsung TV via DLNA.
 
-_Last updated: December 28th, 2025_
-
 [![CI](https://github.com/richandersonio/tv_cast/actions/workflows/ci.yml/badge.svg)](https://github.com/richandersonio/tv_cast/actions/workflows/ci.yml)
 
 ## Prerequisites
@@ -35,42 +33,43 @@ brew bundle  # macOS only
 ### Casting
 
 ```bash
-uv run python tv_cast.py video.mp4              # Cast video
-uv run python tv_cast.py video.mp4 -d 60        # Cast for 60 seconds
-uv run python tv_cast.py "https://youtube.com/watch?v=..."  # YouTube
-uv run python tv_cast.py --image photo.jpg      # Display image (10s)
-uv run python tv_cast.py --rio                  # Cast dancing RIO logo (15s)
-uv run python tv_cast.py --rio-live             # Live real-time dancing RIO stream
-uv run python tv_cast.py --tv-state             # Show what TV is currently showing
-uv run python tv_cast.py --tv-apps              # Pair once & list all installed TV apps
-uv run python tv_cast.py --rio --no-restore     # Skip auto-restoring previous TV app
-uv run python tv_cast.py --stop                 # Stop playback
+uv run tv-cast video.mp4              # Cast video
+uv run tv-cast video.mp4 -d 60        # Cast for 60 seconds
+uv run tv-cast "https://youtube.com/watch?v=..."  # YouTube
+uv run tv-cast --image photo.jpg      # Display image (10s)
+uv run tv-cast --rio                  # Cast dancing RIO logo (15s)
+uv run tv-cast --rio-live             # Live real-time dancing RIO stream
+uv run tv-cast --tv-state             # Show what TV is currently showing
+uv run tv-cast --tv-apps              # Pair once & list all installed TV apps
+uv run tv-cast --rio --no-restore     # Skip auto-restoring previous TV app
+uv run tv-cast --stop                 # Stop playback
 ```
 
-**Alternative entry points:**
+**Alternative entry point:**
 
 ```bash
 uv run python -m tv_cast video.mp4
-uv run tv-cast video.mp4
 ```
 
 ### Device Management
 
 ```bash
-uv run python tv_cast.py --scan                 # Find TVs
-uv run python tv_cast.py --scan-all             # Deep network scan
-uv run python tv_cast.py --device 192.168.1.50  # Set TV by IP
-uv run python tv_cast.py --select-device        # Interactive device selection
-uv run python tv_cast.py --status               # Show current device
-uv run python tv_cast.py --list-devices         # List all devices
-uv run python tv_cast.py --forget               # Forget device
+uv run tv-cast --scan                 # Find TVs
+uv run tv-cast --scan-all             # Deep network scan
+uv run tv-cast --device 192.168.1.50  # Set TV by IP
+uv run tv-cast --select-device        # Interactive device selection
+uv run tv-cast --status               # Show current device
+uv run tv-cast --list-devices         # List all devices
+uv run tv-cast --forget               # Forget device
 ```
 
 ### Cache & Interactive Mode
 
 ```bash
-uv run python tv_cast.py --clear-cache          # Clear cache
-uv run python tv_cast.py                        # Interactive menu
+uv run tv-cast --clear-cache          # Clear cache
+uv run tv-cast                        # Interactive menu
+uv run tv-cast --version              # Show version
+uv run tv-cast -v video.mp4           # Verbose: show debug logging on stderr
 ```
 
 ## System Dependencies
@@ -91,20 +90,23 @@ This project is provided without warranty or liability. See [LICENSE](LICENSE).
 
 ## Contributing
 
-Contributions are welcome. Before opening a pull request, run:
+Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). In short:
 
 ```bash
-uv run pytest
+uv sync --dev
+uv run pre-commit install        # Run ruff + mypy on every commit
+uv run ruff format . && uv run ruff check .
+uv run mypy
+uv run pytest                    # Includes coverage with a minimum threshold
 ```
 
-Please avoid committing generated files, local caches, credentials, or
-downloaded media.
+Security issues: please follow [SECURITY.md](SECURITY.md) rather than opening a
+public issue.
 
 ## Project Structure
 
 ```
 tv_cast/
-├── tv_cast.py           # Entry point (thin wrapper)
 ├── tv_cast/             # Main package
 │   ├── __init__.py      # Package metadata
 │   ├── __main__.py      # Module entry point
@@ -114,6 +116,8 @@ tv_cast/
 │   ├── conversion.py    # HLS/ffmpeg conversion
 │   ├── discovery.py     # Device discovery (DLNA, mDNS)
 │   ├── menu.py          # Interactive menus
+│   ├── rio.py           # Dancing RIO logo animation
+│   ├── tv_state.py      # Samsung TV state, apps, and restore
 │   ├── utils.py         # Helper functions
 │   └── youtube.py       # YouTube downloading
 ├── pyproject.toml       # Python dependencies
@@ -124,7 +128,7 @@ tv_cast/
 
 ## Package Files
 
-**`tv_cast/__init__.py`** - Package metadata (version, date)
+**`tv_cast/__init__.py`** - Package metadata (`__version__`, read from `pyproject.toml`)
 
 **`tv_cast/__main__.py`** - Module entry point, signal handlers, cleanup on exit
 
@@ -143,6 +147,10 @@ tv_cast/
 **`tv_cast/menu.py`** - Interactive menus (main, playback, device selection)
 
 **`tv_cast/cli.py`** - Command-line argument parsing and CLI commands
+
+**`tv_cast/rio.py`** - Dancing RIO logo rendering (cached video and live stream)
+
+**`tv_cast/tv_state.py`** - Samsung TV state snapshot, installed apps, and auto-restore
 
 ## Common uv Commands
 

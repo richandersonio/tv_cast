@@ -40,9 +40,9 @@ def download_youtube(
     print("📺 Fetching YouTube video info...")
 
     base_opts = {
-        'quiet': True,
-        'no_warnings': True,
-        'noplaylist': True,
+        "quiet": True,
+        "no_warnings": True,
+        "noplaylist": True,
     }
 
     with yt_dlp.YoutubeDL(base_opts) as ydl:
@@ -52,9 +52,9 @@ def download_youtube(
                 print("❌ Failed to get video info: empty response")
                 return None
 
-            video_id = _sanitize_video_id(info.get('id'), url)
-            title = info.get('title', 'Unknown')
-            duration = info.get('duration', 0)
+            video_id = _sanitize_video_id(info.get("id"), url)
+            title = info.get("title", "Unknown")
+            duration = info.get("duration", 0)
 
             print(f"   Title: {title}")
             if duration:
@@ -62,8 +62,8 @@ def download_youtube(
                 print(f"   Duration: {int(mins)}:{int(secs):02d}")
 
             info_path = os.path.join(YOUTUBE_CACHE_DIR, f"{video_id}.info.json")
-            with open(info_path, 'w', encoding='utf-8') as f:
-                json.dump({'id': video_id, 'title': title, 'duration': duration}, f)
+            with open(info_path, "w", encoding="utf-8") as f:
+                json.dump({"id": video_id, "title": title, "duration": duration}, f)
 
         except Exception as e:
             print(f"❌ Failed to get video info: {e}")
@@ -83,11 +83,11 @@ def download_youtube(
     def progress_hook(d: dict[str, Any]) -> None:
         if cancel_event is not None and cancel_event.is_set():
             raise _DownloadCancelled
-        if d['status'] == 'downloading':
-            percent = d.get('_percent_str', '?%').strip()
-            speed = d.get('_speed_str', '?').strip()
+        if d["status"] == "downloading":
+            percent = d.get("_percent_str", "?%").strip()
+            speed = d.get("_speed_str", "?").strip()
             print(f"\r   {percent} at {speed}    ", end="", flush=True)
-        elif d['status'] == 'finished':
+        elif d["status"] == "finished":
             print("\r   ✅ Download complete!          ")
 
     # Escape literal '%' characters so yt-dlp does not interpret them as template fields.
@@ -95,10 +95,10 @@ def download_youtube(
 
     ydl_opts = {
         **base_opts,
-        'format': 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best',
-        'outtmpl': safe_outtmpl,
-        'progress_hooks': [progress_hook],
-        'merge_output_format': 'mp4',
+        "format": "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best",
+        "outtmpl": safe_outtmpl,
+        "progress_hooks": [progress_hook],
+        "merge_output_format": "mp4",
     }
 
     try:
@@ -118,20 +118,21 @@ def find_cached_youtube_videos() -> list[dict[str, Any]]:
     if not os.path.exists(YOUTUBE_CACHE_DIR):
         return []
 
-    videos = []
+    videos: list[dict[str, Any]] = []
     for file in os.listdir(YOUTUBE_CACHE_DIR):
-        if file.endswith('.mp4'):
+        if file.endswith(".mp4"):
             file_path = os.path.join(YOUTUBE_CACHE_DIR, file)
             size = os.path.getsize(file_path)
-            video_id = file.removesuffix('.mp4')
+            video_id = file.removesuffix(".mp4")
 
-            title = None
+            title: str | None = None
             info_file = os.path.join(YOUTUBE_CACHE_DIR, f"{video_id}.info.json")
             if os.path.exists(info_file):
                 try:
-                    with open(info_file, encoding='utf-8') as f:
+                    with open(info_file, encoding="utf-8") as f:
                         info = json.load(f)
-                        title = info.get('title', video_id)
+                        raw_title = info.get("title")
+                        title = str(raw_title) if raw_title else video_id
                 except (json.JSONDecodeError, OSError):
                     pass
 
@@ -140,13 +141,15 @@ def find_cached_youtube_videos() -> list[dict[str, Any]]:
 
             hls_cached, _ = is_cached(file_path)
 
-            videos.append({
-                'id': video_id,
-                'title': title,
-                'path': file_path,
-                'size': size,
-                'hls_cached': hls_cached,
-            })
+            videos.append(
+                {
+                    "id": video_id,
+                    "title": title,
+                    "path": file_path,
+                    "size": size,
+                    "hls_cached": hls_cached,
+                }
+            )
 
-    videos.sort(key=lambda x: x['title'].lower())
+    videos.sort(key=lambda x: x["title"].lower())
     return videos

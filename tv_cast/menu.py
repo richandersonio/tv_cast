@@ -5,7 +5,6 @@ import os
 
 from .casting import cast_live_rio, cast_video, stop_playback
 from .config import (
-    APP_DATE,
     APP_VERSION,
     SAMPLE_YOUTUBE_TITLE,
     SAMPLE_YOUTUBE_URL,
@@ -30,7 +29,17 @@ from .youtube import find_cached_youtube_videos
 
 def find_video_files(directory: str = ".") -> list[tuple[str, int, bool]]:
     """Find all video files in directory."""
-    video_extensions = {'.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m4v', '.ts'}
+    video_extensions = {
+        ".mp4",
+        ".mkv",
+        ".avi",
+        ".mov",
+        ".wmv",
+        ".flv",
+        ".webm",
+        ".m4v",
+        ".ts",
+    }
     videos = []
 
     for file in os.listdir(directory):
@@ -49,7 +58,7 @@ def find_video_files(directory: str = ".") -> list[tuple[str, int, bool]]:
 
 def find_image_files(directory: str = ".") -> list[tuple[str, int]]:
     """Find all image files in directory."""
-    image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'}
+    image_extensions = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}
     images = []
 
     for file in os.listdir(directory):
@@ -80,13 +89,13 @@ def select_youtube_submenu() -> str | None:
         try:
             choice = input("   Select (1, p, or b): ").strip().lower()
 
-            if choice == 'b':
+            if choice == "b":
                 return None
 
-            if choice == '1':
+            if choice == "1":
                 return SAMPLE_YOUTUBE_URL
 
-            if choice == 'p':
+            if choice == "p":
                 url = input("   Enter YouTube URL: ").strip()
                 if url and is_youtube_url(url):
                     return url
@@ -126,18 +135,20 @@ def select_image_submenu() -> str | None:
     while True:
         try:
             if images:
-                choice = input(f"   Select (1-{len(images)}, p, or b): ").strip().lower()
+                choice = (
+                    input(f"   Select (1-{len(images)}, p, or b): ").strip().lower()
+                )
             else:
                 choice = input("   Select (p or b): ").strip().lower()
 
-            if choice == 'b':
+            if choice == "b":
                 return None
 
-            if choice == 'p':
+            if choice == "p":
                 path = input("   Enter image path: ").strip()
                 if path and os.path.exists(path):
                     _, ext = os.path.splitext(path.lower())
-                    if ext in {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'}:
+                    if ext in {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}:
                         return f"IMAGE:{path}"
                     else:
                         print("   ❌ Not a supported image format")
@@ -187,23 +198,23 @@ def interactive_select() -> str:
         for i, (name, size, cached) in enumerate(local_videos, 1):
             cache_icon = "⚡" if cached else "  "
             print(f"   {i:2d}. {cache_icon} {name} ({format_size(size)})")
-            all_items.append(('video', name))
+            all_items.append(("video", name))
 
     if youtube_videos:
         start_idx = len(all_items) + 1
         print("\n📺 Cached YouTube Videos:\n")
         for i, yt in enumerate(youtube_videos, start_idx):
-            cache_icon = "⚡" if yt['hls_cached'] else "  "
-            title = yt['title'][:45] + "..." if len(yt['title']) > 48 else yt['title']
+            cache_icon = "⚡" if yt["hls_cached"] else "  "
+            title = yt["title"][:45] + "..." if len(yt["title"]) > 48 else yt["title"]
             print(f"   {i:2d}. {cache_icon} {title} ({format_size(yt['size'])})")
-            all_items.append(('youtube', yt['path']))
+            all_items.append(("youtube", yt["path"]))
 
     if local_images:
         start_idx = len(all_items) + 1
         print("\n🖼️  Images (will display for 10s):\n")
         for i, (name, size) in enumerate(local_images, start_idx):
             print(f"   {i:2d}.    {name} ({format_size(size)})")
-            all_items.append(('image', name))
+            all_items.append(("image", name))
 
     if not local_videos and not youtube_videos and not local_images:
         print("   (no media found)")
@@ -222,29 +233,31 @@ def interactive_select() -> str:
     while True:
         try:
             if max_choice > 0:
-                choice = input(f"Select (1-{max_choice}), y/i/r/l/0/b: ").strip().lower()
+                choice = (
+                    input(f"Select (1-{max_choice}), y/i/r/l/0/b: ").strip().lower()
+                )
             else:
                 choice = input("Enter y/i/r/l/0/b: ").strip().lower()
 
-            if choice == 'b' or choice == 'q':
-                return 'BACK'
+            if choice == "b" or choice == "q":
+                return "BACK"
 
-            if choice == '0':
-                return 'STOP'
+            if choice == "0":
+                return "STOP"
 
-            if choice == 'r':
-                return 'RIO'
+            if choice == "r":
+                return "RIO"
 
-            if choice == 'l':
-                return 'RIO_LIVE'
+            if choice == "l":
+                return "RIO_LIVE"
 
-            if choice == 'y':
+            if choice == "y":
                 result = select_youtube_submenu()
                 if result:
                     return result
                 continue
 
-            if choice == 'i':
+            if choice == "i":
                 result = select_image_submenu()
                 if result:
                     return result
@@ -254,7 +267,7 @@ def interactive_select() -> str:
                 idx = int(choice) - 1
                 if 0 <= idx < len(all_items):
                     item_type, item_path = all_items[idx]
-                    if item_type == 'image':
+                    if item_type == "image":
                         return f"IMAGE:{item_path}"
                     return item_path
                 else:
@@ -266,7 +279,7 @@ def interactive_select() -> str:
             print("   Please enter a valid option")
         except (KeyboardInterrupt, EOFError):
             print()
-            return 'BACK'
+            return "BACK"
 
 
 def main_menu() -> str:
@@ -274,7 +287,7 @@ def main_menu() -> str:
     current_device = get_current_device()
 
     print("=" * 60)
-    print(f"📺 Samsung TV Caster v{APP_VERSION} — {APP_DATE}")
+    print(f"📺 Samsung TV Caster v{APP_VERSION}")
     print("=" * 60)
 
     if current_device:
@@ -284,7 +297,9 @@ def main_menu() -> str:
 
     cache_count = count_hls_cache_entries()
     if os.path.exists(YOUTUBE_CACHE_DIR):
-        cache_count += len([f for f in os.listdir(YOUTUBE_CACHE_DIR) if f.endswith('.mp4')])
+        cache_count += len(
+            [f for f in os.listdir(YOUTUBE_CACHE_DIR) if f.endswith(".mp4")]
+        )
     cache_count += count_image_cache_entries()
 
     print("\n   1. 🎬 TV Playback - cast videos/images")
@@ -298,17 +313,17 @@ def main_menu() -> str:
         try:
             choice = input("Select option: ").strip().lower()
 
-            if not choice or choice == 'q':
-                return 'QUIT'
+            if not choice or choice == "q":
+                return "QUIT"
 
-            if choice == '1':
-                return 'PLAYBACK'
+            if choice == "1":
+                return "PLAYBACK"
 
-            if choice == '2':
-                return 'DEVICES'
+            if choice == "2":
+                return "DEVICES"
 
-            if choice == '3' and cache_count > 0:
-                return 'CLEAR_CACHE'
+            if choice == "3" and cache_count > 0:
+                return "CLEAR_CACHE"
 
             print("   Please enter a valid option")
 
@@ -316,7 +331,7 @@ def main_menu() -> str:
             print("   Please enter a valid option")
         except (KeyboardInterrupt, EOFError):
             print()
-            return 'QUIT'
+            return "QUIT"
 
 
 def playback_menu_loop() -> None:
@@ -324,9 +339,9 @@ def playback_menu_loop() -> None:
     while True:
         try:
             video = interactive_select()
-            if video == 'BACK':
+            if video == "BACK":
                 return
-            elif video == 'STOP':
+            elif video == "STOP":
                 current_device = get_current_device()
                 if current_device:
                     asyncio.run(stop_playback())
@@ -337,17 +352,19 @@ def playback_menu_loop() -> None:
                 current_device = get_current_device()
                 if not current_device:
                     print("\n❌ No device selected. Please select a device first.")
-                    print("   Use the 'Network Devices' menu to scan and select a device.")
+                    print(
+                        "   Use the 'Network Devices' menu to scan and select a device."
+                    )
                     print()
                     continue
 
-                if video == 'RIO':
+                if video == "RIO":
                     video_path = create_dancing_rio_video(duration=15)
                     if video_path:
                         asyncio.run(cast_video(video_path, duration=17))
                     else:
                         print("❌ Failed to generate dancing RIO animation")
-                elif video == 'RIO_LIVE':
+                elif video == "RIO_LIVE":
                     asyncio.run(cast_live_rio(duration=0))
                 elif video.startswith("IMAGE:"):
                     image_path = video[6:]
@@ -373,7 +390,9 @@ async def device_menu() -> str | None:
     print("=" * 60)
 
     if current_device:
-        print(f"\n   ✅ Current: {current_device['name']} ({current_device.get('ip', 'unknown')})")
+        print(
+            f"\n   ✅ Current: {current_device['name']} ({current_device.get('ip', 'unknown')})"
+        )
     else:
         print("\n   ⚠️  No device selected")
 
@@ -387,10 +406,10 @@ async def device_menu() -> str | None:
         try:
             choice = prompt_input("Select option: ").strip().lower()
 
-            if choice == 'b' or choice == 'q':
-                return 'BACK'
+            if choice == "b" or choice == "q":
+                return "BACK"
 
-            if choice == '1':
+            if choice == "1":
                 print("\n🔍 Scanning for TVs...")
                 devices = await discover_dlna_devices(timeout=5)
                 if devices:
@@ -401,14 +420,18 @@ async def device_menu() -> str | None:
                     print()
                     for i, dev in enumerate(devices, 1):
                         icon = get_device_icon(dev)
-                        print(f"   {i}. {icon} {dev.get('name', 'Unknown')} ({dev.get('ip')})")
+                        print(
+                            f"   {i}. {icon} {dev.get('name', 'Unknown')} ({dev.get('ip')})"
+                        )
 
                     print("\n   0. Cancel")
                     print()
 
                     try:
-                        sel = prompt_input(f"Select device (1-{len(devices)}, or 0): ").strip()
-                        if sel != '0':
+                        sel = prompt_input(
+                            f"Select device (1-{len(devices)}, or 0): "
+                        ).strip()
+                        if sel != "0":
                             idx = int(sel) - 1
                             if 0 <= idx < len(devices):
                                 set_current_device(devices[idx])
@@ -421,23 +444,27 @@ async def device_menu() -> str | None:
                 print()
                 continue
 
-            if choice == '2':
+            if choice == "2":
                 devices = await discover_all_devices(timeout=8)
                 if devices:
                     save_discovered_devices(devices)
-                    castable = [d for d in devices if d.get('castable')]
+                    castable = [d for d in devices if d.get("castable")]
                     if castable:
                         print("\n📺 Cast-capable devices:\n")
                         for i, dev in enumerate(castable, 1):
                             icon = get_device_icon(dev)
-                            print(f"   {i}. {icon} {dev.get('name', 'Unknown')} ({dev.get('ip')})")
+                            print(
+                                f"   {i}. {icon} {dev.get('name', 'Unknown')} ({dev.get('ip')})"
+                            )
 
                         print("\n   0. Cancel")
                         print()
 
                         try:
-                            sel = prompt_input(f"Select device (1-{len(castable)}, or 0): ").strip()
-                            if sel != '0':
+                            sel = prompt_input(
+                                f"Select device (1-{len(castable)}, or 0): "
+                            ).strip()
+                            if sel != "0":
                                 idx = int(sel) - 1
                                 if 0 <= idx < len(castable):
                                     set_current_device(castable[idx])
@@ -448,7 +475,7 @@ async def device_menu() -> str | None:
                 print()
                 continue
 
-            if choice == '3':
+            if choice == "3":
                 forget_device()
                 print()
                 continue
@@ -457,4 +484,4 @@ async def device_menu() -> str | None:
 
         except (KeyboardInterrupt, EOFError):
             print()
-            return 'BACK'
+            return "BACK"

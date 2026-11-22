@@ -4,6 +4,7 @@ import asyncio
 import base64
 import contextlib
 import json
+import logging
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from typing import Any
@@ -12,6 +13,8 @@ from urllib.parse import quote
 import aiohttp
 
 from .utils import format_host_for_url
+
+logger = logging.getLogger(__name__)
 
 # Common Samsung Tizen Smart TV application IDs (queried via :8001/api/v2/applications/<id>).
 YOUTUBE_APP_ID = "111299001912"
@@ -120,8 +123,7 @@ class TVStateSnapshot:
     @property
     def has_restorable_state(self) -> bool:
         return bool(
-            self.visible_app_id
-            or (self.dlna_state == "PLAYING" and self.dlna_uri)
+            self.visible_app_id or (self.dlna_state == "PLAYING" and self.dlna_uri)
         )
 
 
@@ -165,6 +167,7 @@ async def _fetch_app_status(
                 visible = bool(data.get("visible", False))
                 return app_id, name, running, visible
         except Exception:
+            logger.debug("Best-effort step failed", exc_info=True)
             return None
 
 
@@ -238,6 +241,7 @@ async def _fetch_youtube_oembed(
             if isinstance(data, dict):
                 return data.get("title"), data.get("author_name")
     except Exception:
+        logger.debug("Best-effort step failed", exc_info=True)
         return None, None
     return None, None
 
@@ -303,8 +307,12 @@ async def get_youtube_now_playing(
                     return None
                 init_events = _parse_lounge_chunks(await resp.text())
 
-            sid = next((args[0] for name, args in init_events if name == "c" and args), None)
-            gsid = next((args[0] for name, args in init_events if name == "S" and args), None)
+            sid = next(
+                (args[0] for name, args in init_events if name == "c" and args), None
+            )
+            gsid = next(
+                (args[0] for name, args in init_events if name == "S" and args), None
+            )
 
             video_id: str | None = None
             list_id: str | None = None
@@ -343,6 +351,7 @@ async def get_youtube_now_playing(
 
             # 4. Ask the TV for live nowPlaying (timestamp + playing/paused state)
             if sid and gsid and not got_now_playing:
+
                 async def _listen_for_now_playing() -> None:
                     async with session.get(
                         f"{lounge_base}/bc/bind",
@@ -366,17 +375,28 @@ async def get_youtube_now_playing(
                                 # Also try line-level JSON array parsing for streamed events
                                 for line in buf.splitlines():
                                     line = line.strip().lstrip(",")
-                                    if line.startswith("[") and ("nowPlaying" in line or "onStateChange" in line):
+                                    if line.startswith("[") and (
+                                        "nowPlaying" in line or "onStateChange" in line
+                                    ):
                                         with contextlib.suppress(json.JSONDecodeError):
                                             parsed = json.loads(line)
-                                            items = parsed if (parsed and isinstance(parsed[0], list)) else [parsed]
+                                            items = (
+                                                parsed
+                                                if (
+                                                    parsed
+                                                    and isinstance(parsed[0], list)
+                                                )
+                                                else [parsed]
+                                            )
                                             for item in items:
                                                 if (
                                                     isinstance(item, list)
                                                     and len(item) == 2
                                                     and isinstance(item[1], list)
                                                     and item[1]
-                                                    and _apply_event(str(item[1][0]), item[1][1:])
+                                                    and _apply_event(
+                                                        str(item[1][0]), item[1][1:]
+                                                    )
                                                 ):
                                                     return
 
@@ -393,7 +413,11 @@ async def get_youtube_now_playing(
                                 "RID": "2",
                                 "AID": str(len(init_events)),
                             },
-                            data={"count": "1", "ofs": "0", "req0__sc": "getNowPlaying"},
+                            data={
+                                "count": "1",
+                                "ofs": "0",
+                                "req0__sc": "getNowPlaying",
+                            },
                         ):
                             pass
                     with contextlib.suppress(TimeoutError):
@@ -421,6 +445,7 @@ async def get_youtube_now_playing(
                 screen_id=screen_id,
             )
     except Exception:
+        logger.debug("Best-effort step failed", exc_info=True)
         return None
 
 
@@ -440,7 +465,9 @@ async def _send_lounge_command(
     dial_url = f"http://{host}:{dial_port}/ws/apps/YouTube"
 
     try:
-        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=timeout)) as session:
+        async with aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=timeout)
+        ) as session:
             with contextlib.suppress(Exception):
                 async with session.get(dial_url) as resp:
                     if resp.status == 200:
@@ -484,8 +511,12 @@ async def _send_lounge_command(
                     return False
                 init_events = _parse_lounge_chunks(await resp.text())
 
-            sid = next((args[0] for name, args in init_events if name == "c" and args), None)
-            gsid = next((args[0] for name, args in init_events if name == "S" and args), None)
+            sid = next(
+                (args[0] for name, args in init_events if name == "c" and args), None
+            )
+            gsid = next(
+                (args[0] for name, args in init_events if name == "S" and args), None
+            )
             if not sid or not gsid:
                 return False
 
@@ -506,6 +537,7 @@ async def _send_lounge_command(
             ) as resp:
                 return 200 <= resp.status < 300
     except Exception:
+        logger.debug("Best-effort step failed", exc_info=True)
         return False
 
 
@@ -561,9 +593,12 @@ async def stop_youtube_on_tv(
         f"http://{host}:{dial_port}/ws/apps/YouTube/run",
     ):
         with contextlib.suppress(Exception):
-            async with aiohttp.ClientSession(
-                timeout=aiohttp.ClientTimeout(total=timeout)
-            ) as session, session.delete(url) as resp:
+            async with (
+                aiohttp.ClientSession(
+                    timeout=aiohttp.ClientTimeout(total=timeout)
+                ) as session,
+                session.delete(url) as resp,
+            ):
                 if 200 <= resp.status < 300:
                     return True
     return False
@@ -599,7 +634,9 @@ async def play_youtube_on_tv(
         return None
 
     try:
-        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=timeout)) as session:
+        async with aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=timeout)
+        ) as session:
             screen_id = await _get_screen_id(session)
             if not screen_id:
                 # Launch YouTube app via Samsung REST (:8001), WS (:8002), or DIAL (:8080)
@@ -638,6 +675,7 @@ async def play_youtube_on_tv(
                 session, video_id, oembed_base=oembed_base
             )
     except Exception:
+        logger.debug("Best-effort step failed", exc_info=True)
         return False
 
     ok = await resume_youtube_via_lounge(
@@ -689,9 +727,13 @@ async def get_tv_state(
                     if resp.status == 200:
                         samsung_api_reachable = True
                         info = await resp.json(content_type=None)
-                        device_info = info.get("device", {}) if isinstance(info, dict) else {}
+                        device_info = (
+                            info.get("device", {}) if isinstance(info, dict) else {}
+                        )
                         snapshot.power_state = device_info.get("PowerState")
-                        snapshot.model_name = device_info.get("modelName") or device_info.get("name")
+                        snapshot.model_name = device_info.get(
+                            "modelName"
+                        ) or device_info.get("name")
 
             # 2. Query apps with bounded concurrency and an overall cap
             # Keep whatever probes finished before the overall cap instead of discarding all.
@@ -711,7 +753,11 @@ async def get_tv_state(
                 if pending:
                     await asyncio.gather(*pending, return_exceptions=True)
                 for task in probe_tasks:
-                    if task in done and not task.cancelled() and task.exception() is None:
+                    if (
+                        task in done
+                        and not task.cancelled()
+                        and task.exception() is None
+                    ):
                         results.append(task.result())
             seen_running_ids: set[str] = set()
             for item in results:
@@ -725,7 +771,7 @@ async def get_tv_state(
                     snapshot.visible_app_id = app_id
                     snapshot.visible_app_name = name
     except Exception:
-        pass
+        logger.debug("Best-effort step failed", exc_info=True)
 
     # 3. Query active YouTube video via DIAL + Lounge when YouTube is in foreground
     if fetch_youtube and snapshot.visible_app_id == "111299001912":
@@ -734,7 +780,9 @@ async def get_tv_state(
     # 4. Query UPnP AVTransport state if connected
     if av_transport is not None:
         with contextlib.suppress(Exception):
-            t_info = await av_transport.action("GetTransportInfo").async_call(InstanceID=0)
+            t_info = await av_transport.action("GetTransportInfo").async_call(
+                InstanceID=0
+            )
             snapshot.dlna_state = t_info.get("CurrentTransportState")
         with contextlib.suppress(Exception):
             m_info = await av_transport.action("GetMediaInfo").async_call(InstanceID=0)
@@ -767,9 +815,12 @@ async def _launch_app_via_ws(
 
     action_type = "NATIVE_LAUNCH" if app_id.startswith("org.tizen.") else "DEEP_LINK"
     try:
-        async with aiohttp.ClientSession(
-            timeout=aiohttp.ClientTimeout(total=timeout)
-        ) as session, session.ws_connect(url, **ws_kwargs) as ws:
+        async with (
+            aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=timeout)
+            ) as session,
+            session.ws_connect(url, **ws_kwargs) as ws,
+        ):
             msg = await asyncio.wait_for(ws.receive(), timeout=timeout)
             if msg.type != aiohttp.WSMsgType.TEXT:
                 return False
@@ -791,6 +842,7 @@ async def _launch_app_via_ws(
             )
             return await _await_launch_confirmation(ws, confirm_timeout)
     except Exception:
+        logger.debug("Best-effort step failed", exc_info=True)
         return False
 
 
@@ -810,7 +862,11 @@ async def _await_launch_confirmation(ws: Any, confirm_timeout: float) -> bool:
             msg = await asyncio.wait_for(ws.receive(), timeout=remaining)
         except TimeoutError:
             break
-        if msg.type in (aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
+        if msg.type in (
+            aiohttp.WSMsgType.CLOSE,
+            aiohttp.WSMsgType.CLOSED,
+            aiohttp.WSMsgType.ERROR,
+        ):
             break
         if msg.type != aiohttp.WSMsgType.TEXT:
             continue
@@ -850,13 +906,16 @@ async def restore_tv_state(
         print(f"🔄 Restoring {app_label}...")
         restored = False
         try:
-            async with aiohttp.ClientSession(
-                timeout=aiohttp.ClientTimeout(total=timeout)
-            ) as session, session.post(url) as resp:
+            async with (
+                aiohttp.ClientSession(
+                    timeout=aiohttp.ClientTimeout(total=timeout)
+                ) as session,
+                session.post(url) as resp,
+            ):
                 if 200 <= resp.status < 300:
                     restored = True
         except Exception:
-            pass
+            logger.debug("Best-effort step failed", exc_info=True)
 
         # Fallback to authenticated WebSocket ed.apps.launch when REST is unavailable
         if not restored and samsung_token:
@@ -926,7 +985,9 @@ def _build_remote_ws_url(
 ) -> str:
     """Build the Samsung WebSocket remote control URL."""
     host = format_host_for_url(ip)
-    b64_name = quote(base64.b64encode(client_name.encode("utf-8")).decode("ascii"), safe="")
+    b64_name = quote(
+        base64.b64encode(client_name.encode("utf-8")).decode("ascii"), safe=""
+    )
     url = f"{scheme}://{host}:{port}/api/v2/channels/samsung.remote.control?name={b64_name}"
     if token:
         url += f"&token={quote(token, safe='')}"
@@ -947,9 +1008,13 @@ async def pair_and_fetch_installed_apps(
     Returns ``(auth_token, installed_apps)`` where ``installed_apps`` maps ``appId -> name``.
     On first run without a token, the TV displays a one-time 'Allow' prompt.
     """
-    url = _build_remote_ws_url(ip, client_name=client_name, token=token, scheme=scheme, port=ws_port)
+    url = _build_remote_ws_url(
+        ip, client_name=client_name, token=token, scheme=scheme, port=ws_port
+    )
     if not token:
-        print("📺 Connecting to TV — check your TV screen and select 'Allow' to pair...")
+        print(
+            "📺 Connecting to TV — check your TV screen and select 'Allow' to pair..."
+        )
 
     new_token = token
     installed_apps: dict[str, str] = {}
@@ -963,9 +1028,12 @@ async def pair_and_fetch_installed_apps(
     if scheme == "wss":
         ws_kwargs["ssl"] = False
 
-    async with aiohttp.ClientSession(
-        timeout=aiohttp.ClientTimeout(sock_connect=5.0)
-    ) as session, session.ws_connect(url, **ws_kwargs) as ws:
+    async with (
+        aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(sock_connect=5.0)
+        ) as session,
+        session.ws_connect(url, **ws_kwargs) as ws,
+    ):
         connected = False
         deadline = asyncio.get_running_loop().time() + pair_timeout
 
@@ -977,8 +1045,14 @@ async def pair_and_fetch_installed_apps(
                 msg = await asyncio.wait_for(ws.receive(), timeout=remaining)
             except TimeoutError as exc:
                 raise TimeoutError("Timed out waiting for TV pairing approval") from exc
-            if msg.type in (aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
-                raise RuntimeError("TV closed WebSocket connection before pairing completed")
+            if msg.type in (
+                aiohttp.WSMsgType.CLOSE,
+                aiohttp.WSMsgType.CLOSED,
+                aiohttp.WSMsgType.ERROR,
+            ):
+                raise RuntimeError(
+                    "TV closed WebSocket connection before pairing completed"
+                )
             if msg.type != aiohttp.WSMsgType.TEXT:
                 continue
 
@@ -1012,7 +1086,11 @@ async def pair_and_fetch_installed_apps(
                 msg = await asyncio.wait_for(ws.receive(), timeout=remaining)
             except TimeoutError:
                 break
-            if msg.type in (aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
+            if msg.type in (
+                aiohttp.WSMsgType.CLOSE,
+                aiohttp.WSMsgType.CLOSED,
+                aiohttp.WSMsgType.ERROR,
+            ):
                 break
             if msg.type != aiohttp.WSMsgType.TEXT:
                 continue
@@ -1049,7 +1127,9 @@ async def discover_installed_apps_via_rest(
     app_catalog = catalog if catalog is not None else KNOWN_SAMSUNG_APPS
 
     semaphore = asyncio.Semaphore(_MAX_CONCURRENT_APP_PROBES)
-    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=timeout)) as session:
+    async with aiohttp.ClientSession(
+        timeout=aiohttp.ClientTimeout(total=timeout)
+    ) as session:
         results = await asyncio.gather(
             *(
                 _fetch_app_status(session, base_url, app_id, name, semaphore)
@@ -1076,9 +1156,13 @@ def format_tv_state(snapshot: TVStateSnapshot) -> str:
         lines.append(f"   Power: {snapshot.power_state}")
 
     if snapshot.visible_app_name:
-        lines.append(f"   Foreground app: {snapshot.visible_app_name} ({snapshot.visible_app_id})")
+        lines.append(
+            f"   Foreground app: {snapshot.visible_app_name} ({snapshot.visible_app_id})"
+        )
     else:
-        lines.append("   Foreground app: none detected (Home screen, HDMI input, or unknown app)")
+        lines.append(
+            "   Foreground app: none detected (Home screen, HDMI input, or unknown app)"
+        )
 
     if snapshot.youtube is not None:
         yt = snapshot.youtube
@@ -1092,7 +1176,9 @@ def format_tv_state(snapshot: TVStateSnapshot) -> str:
 
     if snapshot.running_apps:
         bg_apps = [
-            name for app_id, name in snapshot.running_apps if app_id != snapshot.visible_app_id
+            name
+            for app_id, name in snapshot.running_apps
+            if app_id != snapshot.visible_app_id
         ]
         if bg_apps:
             lines.append(f"   Background apps: {', '.join(bg_apps)}")

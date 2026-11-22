@@ -5,6 +5,7 @@ import contextlib
 import functools
 import html
 import http.server
+import logging
 import os
 import socket
 import sys
@@ -13,7 +14,7 @@ import threading
 import time
 import urllib.request
 from collections import deque
-from typing import Any, ClassVar
+from typing import Any
 from urllib.parse import urljoin, urlparse
 
 from async_upnp_client.aiohttp import AiohttpRequester
@@ -46,6 +47,8 @@ from .utils import (
 )
 from .youtube import download_youtube
 
+logger = logging.getLogger(__name__)
+
 _ALLOWED_HLS_EXTENSIONS = frozenset({".m3u8", ".ts"})
 _active_playback_control_url: str | None = None
 
@@ -53,7 +56,7 @@ _active_playback_control_url: str | None = None
 class QuietHandler(http.server.SimpleHTTPRequestHandler):
     """HTTP handler that serves only HLS files from its configured directory."""
 
-    extensions_map: ClassVar[dict[str, str]] = {
+    extensions_map: dict[str, str] = {  # noqa: RUF012 - mirrors the base-class attribute
         **http.server.SimpleHTTPRequestHandler.extensions_map,
         ".m3u8": "application/vnd.apple.mpegurl",
         ".ts": "video/MP2T",
@@ -149,13 +152,13 @@ async def get_av_transport(
             print("❌ No device selected. Use 'd' to select a device.")
             return None, None
 
-        ip = current_device['ip']
-        device_name = current_device.get('name', ip)
+        ip = current_device["ip"]
+        device_name = current_device.get("name", ip)
 
         print(f"   Checking if {ip} is reachable...")
 
         test_ports = [9197, 8001, 8002, 7676, 7678, 80]
-        saved_port = current_device.get('port')
+        saved_port = current_device.get("port")
         if isinstance(saved_port, int) and saved_port not in test_ports:
             test_ports.insert(0, saved_port)
 
@@ -182,18 +185,18 @@ async def get_av_transport(
 
         locations_to_try = []
 
-        saved_location = current_device.get('location')
+        saved_location = current_device.get("location")
         if saved_location:
             locations_to_try.append(saved_location)
 
-        port = current_device.get('port', 9197)
+        port = current_device.get("port", 9197)
         url_host = format_host_for_url(ip)
         common_endpoints = [
-            f'http://{url_host}:{port}/dmr',
-            f'http://{url_host}:9197/dmr',
-            f'http://{url_host}:9197/dmr/SamsungMRDesc.xml',
-            f'http://{url_host}:7676/dmr',
-            f'http://{url_host}:7678/dmr',
+            f"http://{url_host}:{port}/dmr",
+            f"http://{url_host}:9197/dmr",
+            f"http://{url_host}:9197/dmr/SamsungMRDesc.xml",
+            f"http://{url_host}:7676/dmr",
+            f"http://{url_host}:7678/dmr",
         ]
 
         for endpoint in common_endpoints:
@@ -209,16 +212,16 @@ async def get_av_transport(
                 )
 
                 for service in device.services.values():
-                    if 'AVTransport' in service.service_type:
+                    if "AVTransport" in service.service_type:
                         changed = False
                         if location != saved_location:
-                            current_device['location'] = location
+                            current_device["location"] = location
                             changed = True
-                        raw_control_url = getattr(service, 'control_url', None)
+                        raw_control_url = getattr(service, "control_url", None)
                         if raw_control_url:
                             resolved_control = urljoin(location, raw_control_url)
-                            if current_device.get('control_url') != resolved_control:
-                                current_device['control_url'] = resolved_control
+                            if current_device.get("control_url") != resolved_control:
+                                current_device["control_url"] = resolved_control
                                 changed = True
                         if changed:
                             save_config()
@@ -256,8 +259,7 @@ async def _scan_and_offer_alternatives(failed_ip: str, failed_name: str) -> bool
 
     try:
         alternative_devices = await discover_dlna_devices(timeout=4)
-        alternatives = [
-            d for d in alternative_devices if d.get('ip') != failed_ip]
+        alternatives = [d for d in alternative_devices if d.get("ip") != failed_ip]
 
         if not alternatives:
             print("   No other TVs found on the network.")
@@ -279,7 +281,7 @@ async def _scan_and_offer_alternatives(failed_ip: str, failed_name: str) -> bool
                 f"Switch to a different TV? (1-{len(alternatives)}, or 0 to cancel): "
             ).strip()
 
-            if choice == '0' or choice.lower() in ('', 'n', 'no', 'q'):
+            if choice == "0" or choice.lower() in ("", "n", "no", "q"):
                 print("   Keeping current device selection.")
                 return False
 
@@ -290,7 +292,8 @@ async def _scan_and_offer_alternatives(failed_ip: str, failed_name: str) -> bool
                 save_config()
                 save_discovered_devices(alternatives)
                 print(
-                    f"\n✅ Switched to: {selected.get('name')} ({selected.get('ip')})")
+                    f"\n✅ Switched to: {selected.get('name')} ({selected.get('ip')})"
+                )
                 return True
             else:
                 print("   Invalid selection. Keeping current device.")
@@ -322,7 +325,7 @@ async def stop_playback(interactive: bool | None = None) -> bool:
         if av_transport:
             print(f"   ✅ Connected: {tv_name}")
             print("⏹️  Stopping playback...")
-            stop = av_transport.action('Stop')
+            stop = av_transport.action("Stop")
             await stop.async_call(InstanceID=0)
             _active_playback_control_url = None
             print("   ✅ Stopped")
@@ -344,7 +347,9 @@ async def _capture_app_state(
     extra_apps = cached_apps if isinstance(cached_apps, dict) else None
     snapshot = await get_tv_state(device["ip"], extra_apps=extra_apps)
     if snapshot.visible_app_name:
-        print(f"   💾 Currently open: {snapshot.visible_app_name} (will restore after playback)")
+        print(
+            f"   💾 Currently open: {snapshot.visible_app_name} (will restore after playback)"
+        )
     return snapshot
 
 
@@ -372,8 +377,14 @@ async def _capture_previous_state(
         snapshot.running_apps = list(app_state.running_apps)
         snapshot.youtube = app_state.youtube
     elif snapshot.visible_app_name:
-        print(f"   💾 Currently open: {snapshot.visible_app_name} (will restore after playback)")
-    if not snapshot.visible_app_name and snapshot.dlna_state == "PLAYING" and snapshot.dlna_uri:
+        print(
+            f"   💾 Currently open: {snapshot.visible_app_name} (will restore after playback)"
+        )
+    if (
+        not snapshot.visible_app_name
+        and snapshot.dlna_state == "PLAYING"
+        and snapshot.dlna_uri
+    ):
         label = snapshot.dlna_title or snapshot.dlna_uri
         print(f"   💾 Currently playing DLNA: {label} (will restore after playback)")
     return snapshot if snapshot.has_restorable_state else None
@@ -441,11 +452,15 @@ async def cast_video(
                         samsung_token=current_device.get("samsung_token"),
                     )
                 return True
-            print("   ⚠️  Native YouTube cast unavailable; falling back to yt-dlp + DLNA HLS...")
+            print(
+                "   ⚠️  Native YouTube cast unavailable; falling back to yt-dlp + DLNA HLS..."
+            )
             pre_native_state = pre_cast_state
 
         try:
-            downloaded = await asyncio.to_thread(download_youtube, video_path, cancel_event)
+            downloaded = await asyncio.to_thread(
+                download_youtube, video_path, cancel_event
+            )
         except (KeyboardInterrupt, asyncio.CancelledError):
             cancel_event.set()
             _uncancel_current_task()
@@ -462,7 +477,9 @@ async def cast_video(
     print(f"\n🎬 Video: {video_name}")
 
     try:
-        playlist_path = await asyncio.to_thread(convert_to_hls, video_path, cancel_event)
+        playlist_path = await asyncio.to_thread(
+            convert_to_hls, video_path, cancel_event
+        )
     except (KeyboardInterrupt, asyncio.CancelledError):
         cancel_event.set()
         _uncancel_current_task()
@@ -472,7 +489,7 @@ async def cast_video(
 
     cache_dir = os.path.dirname(playlist_path)
 
-    device_name = current_device['name']
+    device_name = current_device["name"]
     print(f"\n📺 Connecting to {device_name}...")
     av_transport, tv_name = await get_av_transport(interactive=interactive)
 
@@ -492,9 +509,13 @@ async def cast_video(
         server = ReusableThreadingHTTPServer((local_ip, HTTP_PORT), handler_cls)
     except OSError as e:
         if e.errno in (48, 98):
-            print(f"❌ Port {HTTP_PORT} is already in use. Stop the other tv-cast process and try again.")
+            print(
+                f"❌ Port {HTTP_PORT} is already in use. Stop the other tv-cast process and try again."
+            )
         else:
-            print(f"❌ Could not start local stream server on {local_ip}:{HTTP_PORT}: {e}")
+            print(
+                f"❌ Could not start local stream server on {local_ip}:{HTTP_PORT}: {e}"
+            )
         return False
 
     server_thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -508,7 +529,7 @@ async def cast_video(
     try:
         escaped_video_name = html.escape(video_name, quote=True)
         escaped_hls_url = html.escape(hls_url, quote=True)
-        didl = f'''<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/"
+        didl = f"""<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/"
                     xmlns:dc="http://purl.org/dc/elements/1.1/"
                     xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/">
             <item id="0" parentID="-1" restricted="1">
@@ -516,23 +537,25 @@ async def cast_video(
                 <upnp:class>object.item.videoItem</upnp:class>
                 <res protocolInfo="http-get:*:application/vnd.apple.mpegurl:*">{escaped_hls_url}</res>
             </item>
-        </DIDL-Lite>'''
+        </DIDL-Lite>"""
 
         try:
-            stop = av_transport.action('Stop')
+            stop = av_transport.action("Stop")
             await stop.async_call(InstanceID=0)
         except Exception:
-            pass
+            logger.debug("Best-effort step failed", exc_info=True)
 
         print("\n🎬 Loading video...")
-        set_uri = av_transport.action('SetAVTransportURI')
-        await set_uri.async_call(InstanceID=0, CurrentURI=hls_url, CurrentURIMetaData=didl)
+        set_uri = av_transport.action("SetAVTransportURI")
+        await set_uri.async_call(
+            InstanceID=0, CurrentURI=hls_url, CurrentURIMetaData=didl
+        )
 
         await asyncio.sleep(0.5)
 
         print("▶️  Starting playback...")
-        play = av_transport.action('Play')
-        await play.async_call(InstanceID=0, Speed='1')
+        play = av_transport.action("Play")
+        await play.async_call(InstanceID=0, Speed="1")
         playback_started = True
 
         active_device = get_current_device()
@@ -554,14 +577,16 @@ async def cast_video(
                 _uncancel_current_task()
 
         print("\n⏹️  Stopping playback...")
-        stop = av_transport.action('Stop')
+        stop = av_transport.action("Stop")
         await stop.async_call(InstanceID=0)
         _active_playback_control_url = None
         print("   ✅ Stopped")
         if previous_state is not None:
             dev = get_current_device()
             token = dev.get("samsung_token") if dev else None
-            await restore_tv_state(previous_state, av_transport=av_transport, samsung_token=token)
+            await restore_tv_state(
+                previous_state, av_transport=av_transport, samsung_token=token
+            )
 
         return True
 
@@ -569,31 +594,34 @@ async def cast_video(
         _uncancel_current_task()
         print("\n⏹️  Stopping playback...")
         try:
-            stop = av_transport.action('Stop')
+            stop = av_transport.action("Stop")
             await stop.async_call(InstanceID=0)
             print("   ✅ Stopped")
         except Exception:
-            pass
+            logger.debug("Best-effort step failed", exc_info=True)
         _active_playback_control_url = None
         if previous_state is not None:
             dev = get_current_device()
             token = dev.get("samsung_token") if dev else None
-            await restore_tv_state(previous_state, av_transport=av_transport, samsung_token=token)
+            await restore_tv_state(
+                previous_state, av_transport=av_transport, samsung_token=token
+            )
         return True
 
     except Exception as e:
         print(f"❌ Error: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.debug("Casting failed", exc_info=True)
         if playback_started:
             with contextlib.suppress(Exception):
-                stop = av_transport.action('Stop')
+                stop = av_transport.action("Stop")
                 await stop.async_call(InstanceID=0)
             _active_playback_control_url = None
             if previous_state is not None:
                 dev = get_current_device()
                 token = dev.get("samsung_token") if dev else None
-                await restore_tv_state(previous_state, av_transport=av_transport, samsung_token=token)
+                await restore_tv_state(
+                    previous_state, av_transport=av_transport, samsung_token=token
+                )
         return False
 
     finally:
@@ -603,7 +631,9 @@ async def cast_video(
             server.server_close()
 
 
-async def _drain_async_stream(stream: asyncio.StreamReader | None, buffer: deque[str]) -> None:
+async def _drain_async_stream(
+    stream: asyncio.StreamReader | None, buffer: deque[str]
+) -> None:
     """Continuously drain an async subprocess stream into a bounded buffer."""
     if stream is None:
         return
@@ -614,7 +644,7 @@ async def _drain_async_stream(stream: asyncio.StreamReader | None, buffer: deque
                 break
             buffer.append(line.decode("utf-8", errors="replace"))
     except Exception:
-        pass
+        logger.debug("Best-effort step failed", exc_info=True)
 
 
 async def _wait_for_live_playlist(
@@ -665,7 +695,7 @@ async def cast_live_hls(
     print(f"🔴 Live Casting: {title}")
     print("=" * 60)
 
-    device_name = current_device['name']
+    device_name = current_device["name"]
     print(f"\n📺 Connecting to {device_name}...")
     av_transport, tv_name = await get_av_transport(interactive=interactive)
     if not av_transport:
@@ -712,7 +742,9 @@ async def cast_live_hls(
                     f"❌ Port {HTTP_PORT} is already in use. Stop the other tv-cast process and try again."
                 )
             else:
-                print(f"❌ Could not start local stream server on {local_ip}:{HTTP_PORT}: {e}")
+                print(
+                    f"❌ Could not start local stream server on {local_ip}:{HTTP_PORT}: {e}"
+                )
             return False
 
         server_thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -724,7 +756,7 @@ async def cast_live_hls(
 
         escaped_title = html.escape(title, quote=True)
         escaped_hls_url = html.escape(hls_url, quote=True)
-        didl = f'''<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/"
+        didl = f"""<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/"
                     xmlns:dc="http://purl.org/dc/elements/1.1/"
                     xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/">
             <item id="0" parentID="-1" restricted="1">
@@ -732,21 +764,23 @@ async def cast_live_hls(
                 <upnp:class>object.item.videoItem</upnp:class>
                 <res protocolInfo="http-get:*:application/vnd.apple.mpegurl:*">{escaped_hls_url}</res>
             </item>
-        </DIDL-Lite>'''
+        </DIDL-Lite>"""
 
         with contextlib.suppress(Exception):
-            stop = av_transport.action('Stop')
+            stop = av_transport.action("Stop")
             await stop.async_call(InstanceID=0)
 
         print("\n🎬 Loading live stream...")
-        set_uri = av_transport.action('SetAVTransportURI')
-        await set_uri.async_call(InstanceID=0, CurrentURI=hls_url, CurrentURIMetaData=didl)
+        set_uri = av_transport.action("SetAVTransportURI")
+        await set_uri.async_call(
+            InstanceID=0, CurrentURI=hls_url, CurrentURIMetaData=didl
+        )
 
         await asyncio.sleep(0.5)
 
         print("▶️  Starting live playback...")
-        play = av_transport.action('Play')
-        await play.async_call(InstanceID=0, Speed='1')
+        play = av_transport.action("Play")
+        await play.async_call(InstanceID=0, Speed="1")
         playback_started = True
 
         active_device = get_current_device()
@@ -766,41 +800,47 @@ async def cast_live_hls(
             await process.wait()
 
         print("\n⏹️  Stopping live stream...")
-        stop = av_transport.action('Stop')
+        stop = av_transport.action("Stop")
         await stop.async_call(InstanceID=0)
         _active_playback_control_url = None
         print("   ✅ Stopped")
         if previous_state is not None:
             dev = get_current_device()
             token = dev.get("samsung_token") if dev else None
-            await restore_tv_state(previous_state, av_transport=av_transport, samsung_token=token)
+            await restore_tv_state(
+                previous_state, av_transport=av_transport, samsung_token=token
+            )
         return True
 
     except (KeyboardInterrupt, asyncio.CancelledError):
         _uncancel_current_task()
         print("\n⏹️  Stopping live stream...")
         with contextlib.suppress(Exception):
-            stop = av_transport.action('Stop')
+            stop = av_transport.action("Stop")
             await stop.async_call(InstanceID=0)
             print("   ✅ Stopped")
         _active_playback_control_url = None
         if previous_state is not None:
             dev = get_current_device()
             token = dev.get("samsung_token") if dev else None
-            await restore_tv_state(previous_state, av_transport=av_transport, samsung_token=token)
+            await restore_tv_state(
+                previous_state, av_transport=av_transport, samsung_token=token
+            )
         return True
 
     except Exception as e:
         print(f"❌ Error: {e}")
         if playback_started:
             with contextlib.suppress(Exception):
-                stop = av_transport.action('Stop')
+                stop = av_transport.action("Stop")
                 await stop.async_call(InstanceID=0)
             _active_playback_control_url = None
             if previous_state is not None:
                 dev = get_current_device()
                 token = dev.get("samsung_token") if dev else None
-                await restore_tv_state(previous_state, av_transport=av_transport, samsung_token=token)
+                await restore_tv_state(
+                    previous_state, av_transport=av_transport, samsung_token=token
+                )
         return False
 
     finally:
@@ -859,21 +899,21 @@ def cleanup_on_exit() -> None:
     print("\n⏹️  Stopping playback...")
 
     try:
-        soap_body = '''<?xml version="1.0" encoding="utf-8"?>
+        soap_body = """<?xml version="1.0" encoding="utf-8"?>
 <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
     <s:Body>
         <u:Stop xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
             <InstanceID>0</InstanceID>
         </u:Stop>
     </s:Body>
-</s:Envelope>'''
+</s:Envelope>"""
 
         req = urllib.request.Request(
             control_url,
-            data=soap_body.encode('utf-8'),
+            data=soap_body.encode("utf-8"),
             headers={
-                'Content-Type': 'text/xml; charset="utf-8"',
-                'SOAPACTION': '"urn:schemas-upnp-org:service:AVTransport:1#Stop"',
+                "Content-Type": 'text/xml; charset="utf-8"',
+                "SOAPACTION": '"urn:schemas-upnp-org:service:AVTransport:1#Stop"',
             },
         )
 
@@ -881,4 +921,4 @@ def cleanup_on_exit() -> None:
             pass
         print("   ✅ Stopped")
     except Exception:
-        pass
+        logger.debug("Best-effort step failed", exc_info=True)

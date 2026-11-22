@@ -59,7 +59,9 @@ def _write_rgba_png(path: str, width: int, height: int, pixels: bytearray) -> No
         f.write(png)
 
 
-def _sd_segment(px: float, py: float, ax: float, ay: float, bx: float, by: float) -> float:
+def _sd_segment(
+    px: float, py: float, ax: float, ay: float, bx: float, by: float
+) -> float:
     """Distance from point (px, py) to line segment AB."""
     pax, pay = px - ax, py - ay
     bax, bay = bx - ax, by - ay
@@ -139,7 +141,9 @@ def _render_letter_png(
 
             idx = row_offset + px * 4
             if d < -aa:
-                highlight = max(0.0, min(0.32, (-d - 0.03) * 1.4)) * max(0.0, 1.0 - t * 1.3)
+                highlight = max(0.0, min(0.32, (-d - 0.03) * 1.4)) * max(
+                    0.0, 1.0 - t * 1.3
+                )
                 r = min(255, int(fill_r + (255 - fill_r) * highlight))
                 g = min(255, int(fill_g + (255 - fill_g) * highlight))
                 b = min(255, int(fill_b + (255 - fill_b) * highlight))
@@ -210,13 +214,25 @@ def render_rio_assets(assets_dir: str) -> tuple[str, str, str, str]:
 
     _render_background_png(bg_path)
     _render_letter_png(
-        r_path, _sd_r, top_rgb=(70, 245, 255), bottom_rgb=(30, 120, 255), glow_rgb=(40, 210, 255)
+        r_path,
+        _sd_r,
+        top_rgb=(70, 245, 255),
+        bottom_rgb=(30, 120, 255),
+        glow_rgb=(40, 210, 255),
     )
     _render_letter_png(
-        i_path, _sd_i, top_rgb=(255, 110, 230), bottom_rgb=(210, 35, 165), glow_rgb=(255, 70, 210)
+        i_path,
+        _sd_i,
+        top_rgb=(255, 110, 230),
+        bottom_rgb=(210, 35, 165),
+        glow_rgb=(255, 70, 210),
     )
     _render_letter_png(
-        o_path, _sd_o, top_rgb=(255, 235, 95), bottom_rgb=(255, 125, 30), glow_rgb=(255, 195, 50)
+        o_path,
+        _sd_o,
+        top_rgb=(255, 235, 95),
+        bottom_rgb=(255, 125, 30),
+        glow_rgb=(255, 195, 50),
     )
     return bg_path, r_path, i_path, o_path
 
@@ -230,32 +246,75 @@ def build_dancing_rio_live_hls_cmd(assets_dir: str, hls_dir: str) -> list[str]:
     playlist_path = os.path.join(hls_dir, "playlist.m3u8")
 
     return [
-        "ffmpeg", "-y",
+        "ffmpeg",
+        "-y",
         "-re",
-        "-loop", "1", "-framerate", "30", "-i", bg_path,
-        "-loop", "1", "-framerate", "30", "-i", r_path,
-        "-loop", "1", "-framerate", "30", "-i", i_path,
-        "-loop", "1", "-framerate", "30", "-i", o_path,
-        "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
-        "-filter_complex", _RIO_FILTER_COMPLEX,
-        "-map", "[vout]",
-        "-map", "4:a",
-        "-c:v", "libx264",
-        "-profile:v", "high",
-        "-level:v", "4.1",
-        "-preset", "ultrafast",
-        "-tune", "zerolatency",
-        "-crf", "23",
-        "-g", "60",
-        "-keyint_min", "60",
-        "-sc_threshold", "0",
-        "-c:a", "aac",
-        "-b:a", "128k",
-        "-f", "hls",
-        "-hls_time", "2",
-        "-hls_list_size", "6",
-        "-hls_flags", "delete_segments+independent_segments+temp_file",
-        "-hls_segment_filename", os.path.join(hls_dir, "segment%05d.ts"),
+        "-loop",
+        "1",
+        "-framerate",
+        "30",
+        "-i",
+        bg_path,
+        "-loop",
+        "1",
+        "-framerate",
+        "30",
+        "-i",
+        r_path,
+        "-loop",
+        "1",
+        "-framerate",
+        "30",
+        "-i",
+        i_path,
+        "-loop",
+        "1",
+        "-framerate",
+        "30",
+        "-i",
+        o_path,
+        "-f",
+        "lavfi",
+        "-i",
+        "anullsrc=r=44100:cl=stereo",
+        "-filter_complex",
+        _RIO_FILTER_COMPLEX,
+        "-map",
+        "[vout]",
+        "-map",
+        "4:a",
+        "-c:v",
+        "libx264",
+        "-profile:v",
+        "high",
+        "-level:v",
+        "4.1",
+        "-preset",
+        "ultrafast",
+        "-tune",
+        "zerolatency",
+        "-crf",
+        "23",
+        "-g",
+        "60",
+        "-keyint_min",
+        "60",
+        "-sc_threshold",
+        "0",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "128k",
+        "-f",
+        "hls",
+        "-hls_time",
+        "2",
+        "-hls_list_size",
+        "6",
+        "-hls_flags",
+        "delete_segments+independent_segments+temp_file",
+        "-hls_segment_filename",
+        os.path.join(hls_dir, "segment%05d.ts"),
         playlist_path,
     ]
 
@@ -278,29 +337,74 @@ def create_dancing_rio_video(duration: int = 15) -> str | None:
     print(f"🕺 Generating {duration}s dancing RIO logo animation...")
 
     tmp_output = os.path.join(
-        IMAGE_CACHE_DIR, f"{RIO_CACHE_PREFIX}{_RIO_ASSET_VERSION}_{duration}s.{os.getpid()}.tmp.mp4"
+        IMAGE_CACHE_DIR,
+        f"{RIO_CACHE_PREFIX}{_RIO_ASSET_VERSION}_{duration}s.{os.getpid()}.tmp.mp4",
     )
 
     with tempfile.TemporaryDirectory(prefix="tv_cast_rio_") as assets_dir:
         bg_path, r_path, i_path, o_path = render_rio_assets(assets_dir)
 
         cmd = [
-            "ffmpeg", "-y",
-            "-loop", "1", "-framerate", "30", "-t", str(duration), "-i", bg_path,
-            "-loop", "1", "-framerate", "30", "-t", str(duration), "-i", r_path,
-            "-loop", "1", "-framerate", "30", "-t", str(duration), "-i", i_path,
-            "-loop", "1", "-framerate", "30", "-t", str(duration), "-i", o_path,
-            "-f", "lavfi", "-t", str(duration), "-i", "anullsrc=r=44100:cl=stereo",
-            "-filter_complex", _RIO_FILTER_COMPLEX,
-            "-map", "[vout]",
-            "-map", "4:a",
-            "-c:v", "libx264",
-            "-profile:v", "high",
-            "-level:v", "4.1",
-            "-preset", "ultrafast",
-            "-crf", "22",
-            "-c:a", "aac",
-            "-b:a", "128k",
+            "ffmpeg",
+            "-y",
+            "-loop",
+            "1",
+            "-framerate",
+            "30",
+            "-t",
+            str(duration),
+            "-i",
+            bg_path,
+            "-loop",
+            "1",
+            "-framerate",
+            "30",
+            "-t",
+            str(duration),
+            "-i",
+            r_path,
+            "-loop",
+            "1",
+            "-framerate",
+            "30",
+            "-t",
+            str(duration),
+            "-i",
+            i_path,
+            "-loop",
+            "1",
+            "-framerate",
+            "30",
+            "-t",
+            str(duration),
+            "-i",
+            o_path,
+            "-f",
+            "lavfi",
+            "-t",
+            str(duration),
+            "-i",
+            "anullsrc=r=44100:cl=stereo",
+            "-filter_complex",
+            _RIO_FILTER_COMPLEX,
+            "-map",
+            "[vout]",
+            "-map",
+            "4:a",
+            "-c:v",
+            "libx264",
+            "-profile:v",
+            "high",
+            "-level:v",
+            "4.1",
+            "-preset",
+            "ultrafast",
+            "-crf",
+            "22",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
             "-shortest",
             tmp_output,
         ]

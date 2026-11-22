@@ -40,7 +40,9 @@ def test_discover_mdns_handles_ipv6_and_merges_services(monkeypatch):
             if type_ == "_http._tcp.local.":
                 return FakeServiceInfo(["192.168.1.77"], port=80)
             if type_ == "_airplay._tcp.local.":
-                return FakeServiceInfo(["192.168.1.77"], port=7000, properties={b"model": b"AppleTV"})
+                return FakeServiceInfo(
+                    ["192.168.1.77"], port=7000, properties={b"model": b"AppleTV"}
+                )
             return None
 
         def close(self):
@@ -52,7 +54,9 @@ def test_discover_mdns_handles_ipv6_and_merges_services(monkeypatch):
                 listener.add_service(zc, service_type, "ipv6only._http._tcp.local.")
                 listener.add_service(zc, service_type, "LivingRoom._http._tcp.local.")
             elif service_type == "_airplay._tcp.local.":
-                listener.add_service(zc, service_type, "LivingRoom._airplay._tcp.local.")
+                listener.add_service(
+                    zc, service_type, "LivingRoom._airplay._tcp.local."
+                )
 
     fake_mod = SimpleNamespace(
         IPVersion=FakeIPVersion,
@@ -116,20 +120,41 @@ def test_discover_network_hosts_skips_ping_sweep_on_loopback(monkeypatch):
 async def test_discover_all_devices_filters_multicast_and_respects_timeout(monkeypatch):
     async def fake_dlna(timeout):
         return [
-            {"name": "Samsung TV", "ip": "192.168.1.50", "type": "dlna", "castable": True},
+            {
+                "name": "Samsung TV",
+                "ip": "192.168.1.50",
+                "type": "dlna",
+                "castable": True,
+            },
             {"name": "SSDP", "ip": "239.255.255.250", "type": "dlna", "castable": True},
         ]
 
     def fake_mdns(timeout):
         return [
-            {"name": "mDNS Multicast", "ip": "224.0.0.251", "type": "web", "castable": False},
-            {"name": "Speaker", "ip": "192.168.1.60", "type": "spotify", "castable": False},
+            {
+                "name": "mDNS Multicast",
+                "ip": "224.0.0.251",
+                "type": "web",
+                "castable": False,
+            },
+            {
+                "name": "Speaker",
+                "ip": "192.168.1.60",
+                "type": "spotify",
+                "castable": False,
+            },
         ]
 
     def slow_network(timeout, partial_results=None):
         time.sleep(0.05)
         found = [
-            {"name": "Samsung TV (192.168.1.50)", "ip": "192.168.1.50", "mac": "78:BD:BC:00:00:01", "vendor": "Samsung", "castable": False},
+            {
+                "name": "Samsung TV (192.168.1.50)",
+                "ip": "192.168.1.50",
+                "mac": "78:BD:BC:00:00:01",
+                "vendor": "Samsung",
+                "castable": False,
+            },
             {"name": "Broadcast", "ip": "255.255.255.255", "castable": False},
         ]
         if partial_results is not None:
@@ -190,7 +215,9 @@ async def test_discover_dlna_devices_retries_without_source_on_bind_error(monkey
 
 
 @pytest.mark.asyncio
-async def test_discover_all_devices_preserves_partial_arp_results_on_timeout(monkeypatch):
+async def test_discover_all_devices_preserves_partial_arp_results_on_timeout(
+    monkeypatch,
+):
     async def empty_dlna(timeout):
         return []
 
@@ -200,7 +227,11 @@ async def test_discover_all_devices_preserves_partial_arp_results_on_timeout(mon
     def hanging_network(timeout, partial_results=None):
         if partial_results is not None:
             partial_results.append(
-                {"name": "ARP Host (192.168.1.88)", "ip": "192.168.1.88", "castable": False}
+                {
+                    "name": "ARP Host (192.168.1.88)",
+                    "ip": "192.168.1.88",
+                    "castable": False,
+                }
             )
         time.sleep(5.0)
         return partial_results or []
