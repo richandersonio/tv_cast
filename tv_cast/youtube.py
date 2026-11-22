@@ -118,20 +118,21 @@ def find_cached_youtube_videos() -> list[dict[str, Any]]:
     if not os.path.exists(YOUTUBE_CACHE_DIR):
         return []
 
-    videos = []
+    videos: list[dict[str, Any]] = []
     for file in os.listdir(YOUTUBE_CACHE_DIR):
         if file.endswith(".mp4"):
             file_path = os.path.join(YOUTUBE_CACHE_DIR, file)
             size = os.path.getsize(file_path)
             video_id = file.removesuffix(".mp4")
 
-            title = None
+            title: str | None = None
             info_file = os.path.join(YOUTUBE_CACHE_DIR, f"{video_id}.info.json")
             if os.path.exists(info_file):
                 try:
                     with open(info_file, encoding="utf-8") as f:
                         info = json.load(f)
-                        title = info.get("title", video_id)
+                        raw_title = info.get("title")
+                        title = str(raw_title) if raw_title else video_id
                 except (json.JSONDecodeError, OSError):
                     pass
 

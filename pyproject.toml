@@ -40,9 +40,12 @@ Source = "https://github.com/richandersonio/tv_cast"
 
 [dependency-groups]
 dev = [
+    "mypy>=2.4.1",
+    "pre-commit>=4.7.0",
     "pytest>=9.0.3",
-    "pytest-asyncio>=0.21.0",
-    "ruff>=0.9.0",
+    "pytest-asyncio>=1.5.0",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.17.6",
 ]
 
 [build-system]
@@ -54,7 +57,34 @@ packages = ["tv_cast"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+addopts = ["--strict-markers", "--strict-config", "--cov", "--cov-report=term-missing:skip-covered"]
+filterwarnings = ["error"]
+
+[tool.coverage.run]
+source = ["tv_cast"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 70  # ratchet upward as coverage improves
+exclude_also = [
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+
+[tool.mypy]
+python_version = "3.11"
+files = ["tv_cast"]
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unreachable = true
+strict_equality = true
+
+[[tool.mypy.overrides]]
+module = ["async_upnp_client.*", "yt_dlp.*", "zeroconf.*"]
+ignore_missing_imports = true
 
 [tool.ruff]
 target-version = "py311"

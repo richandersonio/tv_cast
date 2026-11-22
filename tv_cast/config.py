@@ -2,9 +2,13 @@
 
 import contextlib
 import json
+import logging
 import os
 import tempfile
-from typing import Any
+from importlib.metadata import PackageNotFoundError, version
+from typing import Any, TypedDict
+
+logger = logging.getLogger(__name__)
 
 # Settings
 HTTP_PORT = 8765
@@ -19,12 +23,20 @@ FFMPEG_THREADS = 0  # 0 = let ffmpeg/libx264 auto-detect optimal thread count
 SAMPLE_YOUTUBE_URL = "https://youtube.com/watch?v=yvsoeyqCIU8"
 SAMPLE_YOUTUBE_TITLE = "Sample: Mo Holiday - Nov 27th 2017"
 
-# App info
-APP_VERSION = "0.1.0"
-APP_DATE = "Dec 27th, 2025"
+# App info: single-sourced from the installed package metadata (pyproject.toml).
+try:
+    APP_VERSION = version("tv-cast")
+except PackageNotFoundError:  # running from a source tree without installation
+    APP_VERSION = "0.0.0+unknown"
+
+
+class _State(TypedDict):
+    current_device: dict[str, Any] | None
+    discovered_devices: list[dict[str, Any]]
+
 
 # Global state (mutable)
-_state = {
+_state: _State = {
     "current_device": None,
     "discovered_devices": [],
 }
@@ -81,6 +93,7 @@ def make_json_serializable(obj: Any) -> Any:
         try:
             return str(obj)
         except Exception:
+            logger.debug("Best-effort step failed", exc_info=True)
             return None
 
 

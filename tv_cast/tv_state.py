@@ -4,6 +4,7 @@ import asyncio
 import base64
 import contextlib
 import json
+import logging
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from typing import Any
@@ -12,6 +13,8 @@ from urllib.parse import quote
 import aiohttp
 
 from .utils import format_host_for_url
+
+logger = logging.getLogger(__name__)
 
 # Common Samsung Tizen Smart TV application IDs (queried via :8001/api/v2/applications/<id>).
 YOUTUBE_APP_ID = "111299001912"
@@ -164,6 +167,7 @@ async def _fetch_app_status(
                 visible = bool(data.get("visible", False))
                 return app_id, name, running, visible
         except Exception:
+            logger.debug("Best-effort step failed", exc_info=True)
             return None
 
 
@@ -237,6 +241,7 @@ async def _fetch_youtube_oembed(
             if isinstance(data, dict):
                 return data.get("title"), data.get("author_name")
     except Exception:
+        logger.debug("Best-effort step failed", exc_info=True)
         return None, None
     return None, None
 
@@ -440,6 +445,7 @@ async def get_youtube_now_playing(
                 screen_id=screen_id,
             )
     except Exception:
+        logger.debug("Best-effort step failed", exc_info=True)
         return None
 
 
@@ -531,6 +537,7 @@ async def _send_lounge_command(
             ) as resp:
                 return 200 <= resp.status < 300
     except Exception:
+        logger.debug("Best-effort step failed", exc_info=True)
         return False
 
 
@@ -668,6 +675,7 @@ async def play_youtube_on_tv(
                 session, video_id, oembed_base=oembed_base
             )
     except Exception:
+        logger.debug("Best-effort step failed", exc_info=True)
         return False
 
     ok = await resume_youtube_via_lounge(
@@ -763,7 +771,7 @@ async def get_tv_state(
                     snapshot.visible_app_id = app_id
                     snapshot.visible_app_name = name
     except Exception:
-        pass
+        logger.debug("Best-effort step failed", exc_info=True)
 
     # 3. Query active YouTube video via DIAL + Lounge when YouTube is in foreground
     if fetch_youtube and snapshot.visible_app_id == "111299001912":
@@ -834,6 +842,7 @@ async def _launch_app_via_ws(
             )
             return await _await_launch_confirmation(ws, confirm_timeout)
     except Exception:
+        logger.debug("Best-effort step failed", exc_info=True)
         return False
 
 
@@ -906,7 +915,7 @@ async def restore_tv_state(
                 if 200 <= resp.status < 300:
                     restored = True
         except Exception:
-            pass
+            logger.debug("Best-effort step failed", exc_info=True)
 
         # Fallback to authenticated WebSocket ed.apps.launch when REST is unavailable
         if not restored and samsung_token:
