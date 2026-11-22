@@ -30,9 +30,10 @@ Follow this style:
 - **Date-based completed-work history, newest date first:** Group work under
   ISO local date headings (`## YYYY-MM-DD`) with outcome-led bullets directly
   beneath each date heading (no `### Outcomes` subheading).
-- **Bold scope-led titles:** Start each bullet with `**Scope — outcome:**`
-  leading with user-visible behavior, functionality added, compatibility
-  impact, or operational improvements rather than a raw commit list.
+- **Bold scope-led titles, concise plain English:** Start each bullet with
+  `**Scope:**` or `**Scope — outcome:**` in 1–2 short, human-friendly sentences
+  covering key user-visible updates rather than verbose internal details or a
+  raw commit list.
 - **Consolidate to final outcomes:** Merge related commits and follow-up fixes
   for the same capability into one accurate entry; amend an existing entry for
   the same date rather than duplicating it.
