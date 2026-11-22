@@ -1,9 +1,15 @@
 """Utility functions."""
 
-import os
+import ipaddress
+import math
+import platform
+import re
+import signal
 import socket
 import subprocess
-from typing import Optional, Dict, Any
+import threading
+from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 
 def get_local_ip() -> str:
@@ -23,6 +29,24 @@ def get_local_subnet() -> str:
     return f"{parts[0]}.{parts[1]}.{parts[2]}"
 
 
+def is_valid_ip(ip: str) -> bool:
+    """Return True if the string is a valid IPv4 or IPv6 address."""
+    try:
+        ipaddress.ip_address(ip)
+        return True
+    except ValueError:
+        return False
+
+
+def format_host_for_url(host: str) -> str:
+    """Format an IP or hostname for URL interpolation, bracketing IPv6 literals."""
+    try:
+        addr = ipaddress.ip_address(host)
+    except ValueError:
+        return host
+    return f"[{host}]" if isinstance(addr, ipaddress.IPv6Address) else host
+
+
 def format_size(size_bytes: int) -> str:
     """Format file size in human readable format."""
     if size_bytes < 1024:
@@ -36,34 +60,35 @@ def format_size(size_bytes: int) -> str:
 
 
 def check_port(ip: str, port: int, timeout: float = 0.3) -> bool:
-    """Check if a port is open on a host."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.settimeout(timeout)
-        try:
-            result = sock.connect_ex((ip, port))
-            return result == 0
-        except OSError:
-            return False
+    """Check if a port is open on a host (IPv4 or IPv6)."""
+    try:
+        with socket.create_connection((ip, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
 
 
 def ping_host(ip: str, timeout: float = 0.3) -> bool:
     """Check if a host is reachable via ping."""
-    import platform
-
-    if platform.system().lower() == "windows":
-        cmd = ["ping", "-n", "1", "-w", str(int(timeout * 1000)), ip]
+    system = platform.system().lower()
+    if system == "windows":
+        cmd = ["ping", "-n", "1", "-w", str(max(1, int(timeout * 1000))), ip]
+    elif system == "darwin":
+        # macOS ping -W expects milliseconds
+        cmd = ["ping", "-c", "1", "-W", str(max(1, int(timeout * 1000))), ip]
     else:
-        cmd = ["ping", "-c", "1", "-W", str(int(timeout * 1000)), ip]
+        # Linux iputils ping -W expects whole seconds
+        cmd = ["ping", "-c", "1", "-W", str(max(1, math.ceil(timeout))), ip]
 
     try:
         result = subprocess.run(
-            cmd, capture_output=True, timeout=timeout + 0.5, check=False)
+            cmd, capture_output=True, timeout=timeout + 1.0, check=False)
         return result.returncode == 0
     except (subprocess.TimeoutExpired, OSError):
         return False
 
 
-def get_hostname(ip: str) -> Optional[str]:
+def get_hostname(ip: str) -> str | None:
     """Try to resolve hostname for an IP."""
     try:
         hostname, _, _ = socket.gethostbyaddr(ip)
@@ -72,55 +97,77 @@ def get_hostname(ip: str) -> Optional[str]:
         return None
 
 
+_YT_ID_RE = re.compile(r"^[A-Za-z0-9_-]{6,32}$")
+
+
+def extract_youtube_video_id(url: str) -> str | None:
+    """Extract the YouTube video ID from a valid YouTube URL, or return None."""
+    if not is_youtube_url(url):
+        return None
+
+    parsed = urlparse(url.strip())
+    host = (parsed.hostname or "").lower()
+    path = parsed.path or ""
+
+    candidate: str | None = None
+    if host == "youtu.be":
+        candidate = path.strip("/").split("/")[0]
+    elif path == "/watch":
+        values = parse_qs(parsed.query).get("v")
+        candidate = values[0] if values else None
+    elif path.startswith(("/shorts/", "/live/")):
+        parts = [p for p in path.split("/") if p]
+        candidate = parts[1] if len(parts) >= 2 else None
+
+    if candidate and _YT_ID_RE.match(candidate):
+        return candidate
+    return None
+
+
 def is_youtube_url(url: str) -> bool:
-    """Check if URL is a YouTube video."""
-    youtube_patterns = [
-        "youtube.com/watch",
-        "youtu.be/",
-        "youtube.com/shorts",
-        "youtube.com/live",
-    ]
-    return any(p in url.lower() for p in youtube_patterns)
+    """Check if URL is a valid YouTube video URL."""
+    if not url:
+        return False
+
+    try:
+        parsed = urlparse(url.strip())
+    except ValueError:
+        return False
+
+    if parsed.scheme.lower() not in ("http", "https"):
+        return False
+
+    host = (parsed.hostname or "").lower()
+    path = parsed.path or ""
+
+    if host == "youtu.be":
+        return bool(path.strip("/"))
+
+    if host == "youtube.com" or host.endswith(".youtube.com"):
+        return path == "/watch" or path.startswith(("/shorts/", "/live/"))
+
+    return False
 
 
-# Common ports to scan for device identification
-COMMON_PORTS = {
-    21: ("ftp", "FTP Server"),
-    22: ("ssh", "SSH Server"),
-    23: ("telnet", "Telnet"),
-    53: ("dns", "DNS Server"),
-    80: ("http", "Web Server"),
-    443: ("https", "HTTPS Server"),
-    445: ("smb", "Windows File Share"),
-    548: ("afp", "Apple File Share"),
-    554: ("rtsp", "RTSP Streaming"),
-    631: ("ipp", "Printer (IPP)"),
-    1883: ("mqtt", "MQTT Broker"),
-    3000: ("http", "Web App"),
-    3389: ("rdp", "Remote Desktop"),
-    5000: ("http", "Web App / Synology"),
-    5001: ("https", "Synology HTTPS"),
-    5353: ("mdns", "mDNS"),
-    7000: ("airplay", "AirPlay"),
-    7100: ("airplay", "AirPlay"),
-    8000: ("http", "Web Server"),
-    8008: ("chromecast", "Chromecast"),
-    8009: ("chromecast", "Chromecast"),
-    8080: ("http", "Web Server / Proxy"),
-    8443: ("https", "HTTPS Alt"),
-    8888: ("http", "Web Server"),
-    9000: ("http", "Web App"),
-    9090: ("http", "Prometheus / Web"),
-    9100: ("printer", "Printer (RAW)"),
-    9197: ("dlna", "DLNA/UPnP"),
-    32400: ("plex", "Plex Media Server"),
-    32469: ("plex", "Plex DLNA"),
-    49152: ("upnp", "UPnP"),
-    62078: ("apple", "Apple iDevice"),
-}
+def prompt_input(prompt: str = "") -> str:
+    """Read a line from stdin so Ctrl+C raises KeyboardInterrupt, even inside asyncio.run().
+
+    asyncio's runner replaces the SIGINT handler with one that only cancels the main
+    task, which a blocking input() call never observes. Temporarily restoring Python's
+    default handler makes Ctrl+C interrupt the prompt immediately.
+    """
+    if threading.current_thread() is not threading.main_thread():
+        return input(prompt)
+
+    previous = signal.getsignal(signal.SIGINT)
+    signal.signal(signal.SIGINT, signal.default_int_handler)
+    try:
+        return input(prompt)
+    finally:
+        signal.signal(signal.SIGINT, previous)
 
 
-def get_device_icon(device: Dict[str, Any]) -> str:
+def get_device_icon(device: dict[str, Any]) -> str:
     """Get an icon for a device based on its type."""
     device_type = device.get('type', 'unknown')
     icons = {

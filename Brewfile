@@ -6,5 +6,3 @@ brew "ffmpeg"        # Video conversion
 
 # Optional (enhanced features)
 brew "deno"          # YouTube extraction (suppresses yt-dlp warnings)
-brew "nmap"          # Deep network scanning
-
