@@ -45,11 +45,10 @@ uv run tv-cast --rio --no-restore     # Skip auto-restoring previous TV app
 uv run tv-cast --stop                 # Stop playback
 ```
 
-**Alternative entry points:**
+**Alternative entry point:**
 
 ```bash
 uv run python -m tv_cast video.mp4
-uv run tv-cast video.mp4
 ```
 
 ### Device Management
