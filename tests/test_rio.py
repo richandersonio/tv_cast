@@ -33,7 +33,9 @@ def test_cli_parses_rio_flag():
 
 
 def test_build_dancing_rio_live_hls_cmd_uses_realtime_rolling_flags(tmp_path):
-    cmd = rio.build_dancing_rio_live_hls_cmd(str(tmp_path / "assets"), str(tmp_path / "hls"))
+    cmd = rio.build_dancing_rio_live_hls_cmd(
+        str(tmp_path / "assets"), str(tmp_path / "hls")
+    )
     assert "-re" in cmd
     assert "hls" in cmd
     assert "delete_segments+independent_segments+temp_file" in cmd

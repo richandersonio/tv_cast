@@ -53,7 +53,7 @@ def show_status() -> None:
     if current_device:
         print(f"📺 Current device: {current_device['name']}")
         print(f"   IP: {current_device.get('ip', 'unknown')}")
-        if current_device.get('location'):
+        if current_device.get("location"):
             print(f"   DLNA: {current_device['location']}")
     else:
         print("⚠️  No device selected")
@@ -66,7 +66,7 @@ def show_status() -> None:
 
     yt_count = 0
     if os.path.exists(YOUTUBE_CACHE_DIR):
-        yt_count = len([f for f in os.listdir(YOUTUBE_CACHE_DIR) if f.endswith('.mp4')])
+        yt_count = len([f for f in os.listdir(YOUTUBE_CACHE_DIR) if f.endswith(".mp4")])
     print(f"   YouTube downloads: {yt_count}")
 
     img_count = count_image_cache_entries(include_rio=False)
@@ -89,13 +89,17 @@ def list_devices_cli() -> None:
         print("   Use --scan to find TVs on the network")
         return
 
-    castable = [d for d in discovered_devices if d.get('castable', False)]
-    other = [d for d in discovered_devices if not d.get('castable', False)]
+    castable = [d for d in discovered_devices if d.get("castable", False)]
+    other = [d for d in discovered_devices if not d.get("castable", False)]
 
     if castable:
         print("📺 Cast-capable devices:\n")
         for dev in castable:
-            current = " ← selected" if current_device and current_device.get('ip') == dev.get('ip') else ""
+            current = (
+                " ← selected"
+                if current_device and current_device.get("ip") == dev.get("ip")
+                else ""
+            )
             print(f"   {dev.get('ip'):15}  {dev.get('name', 'Unknown')}{current}")
 
     if other:
@@ -126,7 +130,7 @@ async def scan_all_devices_cli() -> None:
 
     if devices:
         save_discovered_devices(devices)
-        castable = [d for d in devices if d.get('castable', False)]
+        castable = [d for d in devices if d.get("castable", False)]
         print(f"\n💡 Found {len(castable)} castable device(s)")
         if castable:
             print("   Use --device IP to select one")
@@ -142,17 +146,17 @@ def set_device_by_ip(ip: str) -> bool:
     discovered_devices = get_discovered_devices()
 
     for dev in discovered_devices:
-        if dev.get('ip') == ip:
+        if dev.get("ip") == ip:
             set_current_device(dev)
             save_config()
             print(f"✅ Selected: {dev.get('name', ip)} ({ip})")
             return True
 
     device = {
-        'ip': ip,
-        'name': f"TV ({ip})",
-        'type': 'dlna',
-        'castable': True,
+        "ip": ip,
+        "name": f"TV ({ip})",
+        "type": "dlna",
+        "castable": True,
     }
     set_current_device(device)
     save_config()
@@ -174,7 +178,7 @@ def cast_image_cli(image_path: str, duration: int, restore: bool = True) -> None
         return
 
     _, ext = os.path.splitext(image_path.lower())
-    if ext not in {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'}:
+    if ext not in {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}:
         print(f"❌ Unsupported image format: {ext}")
         return
 
@@ -244,7 +248,9 @@ async def list_tv_apps_cli() -> None:
             current_device["samsung_token"] = token
     except Exception as e:
         detail = str(e) or type(e).__name__
-        print(f"⚠️  WebSocket app query skipped ({detail}); probing installed apps via REST...")
+        print(
+            f"⚠️  WebSocket app query skipped ({detail}); probing installed apps via REST..."
+        )
 
     rest_entries = await discover_installed_apps_via_rest(ip)
     status_by_id: dict[str, tuple[bool, bool]] = {}
@@ -267,7 +273,9 @@ async def list_tv_apps_cli() -> None:
             "showing apps detected via local REST API.)"
         )
 
-    print(f"\n📱 Installed apps on {current_device.get('name', ip)} ({len(merged_apps)} found):\n")
+    print(
+        f"\n📱 Installed apps on {current_device.get('name', ip)} ({len(merged_apps)} found):\n"
+    )
     for app_id, name in sorted(merged_apps.items(), key=lambda kv: kv[1].lower()):
         running, visible = status_by_id.get(app_id, (False, False))
         badge = " ← foreground" if visible else (" (running)" if running else "")
@@ -310,7 +318,8 @@ Examples:
 
     # Casting options
     parser.add_argument(
-        "-d", "--duration",
+        "-d",
+        "--duration",
         type=_non_negative_int,
         default=0,
         help="Duration in seconds (0 = until Ctrl+C)",
@@ -452,13 +461,13 @@ def run_interactive() -> None:
         try:
             choice = main_menu()
 
-            if choice == 'QUIT':
+            if choice == "QUIT":
                 break
-            elif choice == 'PLAYBACK':
+            elif choice == "PLAYBACK":
                 playback_menu_loop()
-            elif choice == 'DEVICES':
+            elif choice == "DEVICES":
                 asyncio.run(device_menu())
-            elif choice == 'CLEAR_CACHE':
+            elif choice == "CLEAR_CACHE":
                 clear_cache()
                 print()
 
