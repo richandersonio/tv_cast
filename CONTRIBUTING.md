@@ -26,6 +26,10 @@ uv run mypy
 uv run pytest               # fails if coverage drops below the configured minimum
 ```
 
+When running a subset of tests, add `--no-cov` (for example
+`uv run pytest tests/test_cli.py --no-cov`), since the coverage minimum applies
+to the full suite.
+
 - Add or update tests for any behaviour change; tests must not need a real TV.
 - Keep changes focused, and update `README.md` when user-facing behaviour changes.
 - Add a short entry to `CHANGELOG.md` (see the style notes in `AGENTS.md`).
