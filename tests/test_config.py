@@ -53,14 +53,18 @@ def test_save_discovered_devices_updates_existing_ip(tmp_path, monkeypatch):
     assert config.get_discovered_devices() == [{"name": "New", "ip": "192.168.1.20"}]
 
 
-def test_save_discovered_devices_deduplicates_within_single_batch(tmp_path, monkeypatch):
+def test_save_discovered_devices_deduplicates_within_single_batch(
+    tmp_path, monkeypatch
+):
     monkeypatch.setattr(config, "CONFIG_DIR", str(tmp_path))
     monkeypatch.setattr(config, "CONFIG_FILE", str(tmp_path / "config.json"))
 
-    config.save_discovered_devices([
-        {"name": "First", "ip": "192.168.1.30"},
-        {"name": "Second", "ip": "192.168.1.30"},
-    ])
+    config.save_discovered_devices(
+        [
+            {"name": "First", "ip": "192.168.1.30"},
+            {"name": "Second", "ip": "192.168.1.30"},
+        ]
+    )
 
     assert config.get_discovered_devices() == [{"name": "Second", "ip": "192.168.1.30"}]
 
@@ -75,18 +79,22 @@ def test_forget_device_clears_current_device(tmp_path, monkeypatch):
     assert config.get_current_device() is None
 
 
-def test_set_current_device_preserves_pairing_metadata_for_same_ip(tmp_path, monkeypatch):
+def test_set_current_device_preserves_pairing_metadata_for_same_ip(
+    tmp_path, monkeypatch
+):
     cfg_dir = tmp_path / "cfg"
     cfg_file = cfg_dir / "config.json"
     monkeypatch.setattr(config, "CONFIG_DIR", str(cfg_dir))
     monkeypatch.setattr(config, "CONFIG_FILE", str(cfg_file))
 
-    config.set_current_device({
-        "name": "TV",
-        "ip": "192.168.1.50",
-        "samsung_token": "tok-abc",
-        "installed_apps": {"111299001912": "YouTube"},
-    })
+    config.set_current_device(
+        {
+            "name": "TV",
+            "ip": "192.168.1.50",
+            "samsung_token": "tok-abc",
+            "installed_apps": {"111299001912": "YouTube"},
+        }
+    )
     # Re-selecting same IP from a rescan must retain token & installed_apps
     config.set_current_device({"name": "TV Renamed", "ip": "192.168.1.50"})
     current = config.get_current_device()
@@ -104,7 +112,9 @@ def test_save_config_is_atomic_when_write_fails(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "CONFIG_DIR", str(tmp_path))
     monkeypatch.setattr(config, "CONFIG_FILE", str(cfg_file))
 
-    config.set_current_device({"name": "TV", "ip": "192.168.1.50", "samsung_token": "tok-abc"})
+    config.set_current_device(
+        {"name": "TV", "ip": "192.168.1.50", "samsung_token": "tok-abc"}
+    )
     config.set_discovered_devices([])
     config.save_config()
     original = cfg_file.read_text(encoding="utf-8")

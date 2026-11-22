@@ -16,16 +16,16 @@ def get_local_ip() -> str:
     """Get local IP address."""
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
         try:
-            s.connect(('8.8.8.8', 80))
+            s.connect(("8.8.8.8", 80))
             return s.getsockname()[0]
         except OSError:
-            return '127.0.0.1'
+            return "127.0.0.1"
 
 
 def get_local_subnet() -> str:
     """Get the local subnet for scanning."""
     local_ip = get_local_ip()
-    parts = local_ip.split('.')
+    parts = local_ip.split(".")
     return f"{parts[0]}.{parts[1]}.{parts[2]}"
 
 
@@ -82,7 +82,8 @@ def ping_host(ip: str, timeout: float = 0.3) -> bool:
 
     try:
         result = subprocess.run(
-            cmd, capture_output=True, timeout=timeout + 1.0, check=False)
+            cmd, capture_output=True, timeout=timeout + 1.0, check=False
+        )
         return result.returncode == 0
     except (subprocess.TimeoutExpired, OSError):
         return False
@@ -169,43 +170,43 @@ def prompt_input(prompt: str = "") -> str:
 
 def get_device_icon(device: dict[str, Any]) -> str:
     """Get an icon for a device based on its type."""
-    device_type = device.get('type', 'unknown')
+    device_type = device.get("type", "unknown")
     icons = {
-        'dlna': '📺',
-        'airplay': '🍎',
-        'chromecast': '📺',
-        'spotify': '🎵',
-        'homekit': '🏠',
-        'apple': '🍎',
-        'apple-mobile': '📱',
-        'apple-tv': '📺',
-        'homepod': '🔊',
-        'mac': '💻',
-        'airport': '📡',
-        'android': '🤖',
-        'phone': '📱',
-        'samsung': '📱',
-        'google': '🔍',
-        'amazon': '📦',
-        'roku': '📺',
-        'sony': '📺',
-        'lg': '📺',
-        'tesla': '⚡',
-        'raspberry-pi': '🍓',
-        'file-share': '📁',
-        'printer': '🖨️',
-        'computer': '💻',
-        'windows': '🪟',
-        'linux': '🐧',
-        'bsd': '😈',
-        'nas': '💾',
-        'synology': '💾',
-        'plex': '🎬',
-        'media': '🎬',
-        'camera': '📷',
-        'router': '📡',
-        'iot-hub': '🔌',
-        'web': '🌐',
-        'unknown': '❓',
+        "dlna": "📺",
+        "airplay": "🍎",
+        "chromecast": "📺",
+        "spotify": "🎵",
+        "homekit": "🏠",
+        "apple": "🍎",
+        "apple-mobile": "📱",
+        "apple-tv": "📺",
+        "homepod": "🔊",
+        "mac": "💻",
+        "airport": "📡",
+        "android": "🤖",
+        "phone": "📱",
+        "samsung": "📱",
+        "google": "🔍",
+        "amazon": "📦",
+        "roku": "📺",
+        "sony": "📺",
+        "lg": "📺",
+        "tesla": "⚡",
+        "raspberry-pi": "🍓",
+        "file-share": "📁",
+        "printer": "🖨️",
+        "computer": "💻",
+        "windows": "🪟",
+        "linux": "🐧",
+        "bsd": "😈",
+        "nas": "💾",
+        "synology": "💾",
+        "plex": "🎬",
+        "media": "🎬",
+        "camera": "📷",
+        "router": "📡",
+        "iot-hub": "🔌",
+        "web": "🌐",
+        "unknown": "❓",
     }
-    return icons.get(device_type, '📱')
+    return icons.get(device_type, "📱")
