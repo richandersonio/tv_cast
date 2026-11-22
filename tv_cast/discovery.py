@@ -2,80 +2,151 @@
 
 import asyncio
 import concurrent.futures
-import socket
+import ipaddress
+import platform
+import re
 import subprocess
+import threading
 import time
-from typing import List, Dict, Any, Optional
+from typing import Any
+from urllib.parse import urljoin, urlparse
 
-from .config import get_discovered_devices, set_discovered_devices, save_discovered_devices
-from .utils import get_local_ip, get_local_subnet, ping_host, get_hostname, check_port
+from .utils import get_hostname, get_local_ip, get_local_subnet, ping_host
 
 
-async def discover_dlna_devices(timeout: int = 5) -> List[Dict[str, Any]]:
+def _is_usable_host_ip(ip: str | None) -> bool:
+    """Return True if IP is a unicast, non-multicast, non-broadcast, non-loopback address."""
+    if not ip:
+        return False
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    if addr.is_multicast or addr.is_loopback or addr.is_unspecified:
+        return False
+    return not (isinstance(addr, ipaddress.IPv4Address) and str(addr) == "255.255.255.255")
+
+
+async def discover_dlna_devices(timeout: int = 5) -> list[dict[str, Any]]:
     """Discover DLNA Media Renderer devices on the network."""
+    from async_upnp_client.aiohttp import AiohttpRequester
+    from async_upnp_client.client_factory import UpnpFactory
     from async_upnp_client.search import async_search
 
-    devices = []
-    seen = set()
+    devices: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    requester = AiohttpRequester()
+    factory = UpnpFactory(requester)
 
-    async def on_response(response):
+    async def on_response(response: dict[str, Any]) -> None:
         location = response.get('location', '')
         if location and location not in seen:
             seen.add(location)
 
             try:
-                from urllib.parse import urlparse
-                from async_upnp_client.aiohttp import AiohttpRequester
-                from async_upnp_client.client_factory import UpnpFactory
-
                 parsed = urlparse(location)
                 ip = parsed.hostname
-                port = parsed.port or 80
-
-                requester = AiohttpRequester()
-                factory = UpnpFactory(requester)
+                port = parsed.port or (443 if parsed.scheme == "https" else 80)
 
                 try:
                     device = await factory.async_create_device(location)
                     name = device.friendly_name or f"Unknown ({ip})"
 
-                    # Check if device has AVTransport (media playback)
-                    has_av = any('AVTransport' in str(s.service_type)
-                                 for s in device.services.values())
+                    av_service = None
+                    for service in device.services.values():
+                        if 'AVTransport' in str(service.service_type):
+                            av_service = service
+                            break
 
-                    if has_av:
-                        devices.append({
+                    if av_service is not None:
+                        control_url = None
+                        raw_control_url = getattr(av_service, 'control_url', None)
+                        if raw_control_url:
+                            control_url = urljoin(location, raw_control_url)
+
+                        entry: dict[str, Any] = {
                             'name': name,
                             'ip': ip,
                             'port': port,
                             'location': location,
                             'type': 'dlna',
                             'castable': True,
-                        })
+                        }
+                        if control_url:
+                            entry['control_url'] = control_url
+
+                        devices.append(entry)
                         print(f"   📺 {name} ({ip})")
                 except Exception:
                     pass
             except (ValueError, AttributeError):
                 pass
 
+    search_kwargs: dict[str, Any] = {
+        'search_target': 'urn:schemas-upnp-org:device:MediaRenderer:1',
+        'timeout': timeout,
+        'async_callback': on_response,
+    }
+    local_ip = get_local_ip()
+    if _is_usable_host_ip(local_ip):
+        search_kwargs['source'] = (local_ip, 0)
+
     try:
-        await async_search(
-            search_target='urn:schemas-upnp-org:device:MediaRenderer:1',
-            timeout=timeout,
-            async_callback=on_response
-        )
+        await async_search(**search_kwargs)
     except Exception:
-        pass
+        if 'source' in search_kwargs:
+            search_kwargs.pop('source', None)
+            try:
+                await async_search(**search_kwargs)
+            except Exception:
+                pass
 
     return devices
 
 
-def discover_mdns_devices(timeout: int = 5) -> List[Dict[str, Any]]:
-    """Discover devices via mDNS/Bonjour."""
-    from zeroconf import Zeroconf, ServiceBrowser, ServiceListener
+_MDNS_TYPE_PRIORITY = {
+    "unknown": 0,
+    "web": 1,
+    "computer": 2,
+    "file-share": 2,
+    "printer": 3,
+    "homekit": 3,
+    "apple": 3,
+    "spotify": 4,
+    "airplay": 5,
+    "chromecast": 5,
+}
 
-    devices = []
-    seen_ips = set()
+
+def _classify_mdns_service(type_: str) -> tuple[str, str]:
+    """Return (device_type, icon) for an mDNS service type."""
+    if "_airplay" in type_ or "_raop" in type_:
+        return "airplay", "🍎"
+    if "_googlecast" in type_:
+        return "chromecast", "📺"
+    if "_spotify" in type_:
+        return "spotify", "🎵"
+    if "_homekit" in type_ or "_hap" in type_:
+        return "homekit", "🏠"
+    if "_companion" in type_ or "_sleep-proxy" in type_:
+        return "apple", "🍎"
+    if "_smb" in type_ or "_afp" in type_:
+        return "file-share", "📁"
+    if "_printer" in type_ or "_ipp" in type_:
+        return "printer", "🖨️"
+    if "_ssh" in type_ or "_workstation" in type_:
+        return "computer", "💻"
+    if "_http" in type_:
+        return "web", "🌐"
+    return "unknown", "📱"
+
+
+def discover_mdns_devices(timeout: int = 5) -> list[dict[str, Any]]:
+    """Discover devices via mDNS/Bonjour."""
+    from zeroconf import IPVersion, ServiceBrowser, ServiceListener, Zeroconf
+
+    devices_by_ip: dict[str, dict[str, Any]] = {}
+    lock = threading.Lock()
 
     service_types = [
         "_airplay._tcp.local.",
@@ -100,69 +171,41 @@ def discover_mdns_devices(timeout: int = 5) -> List[Dict[str, Any]]:
         def add_service(self, zc: Zeroconf, type_: str, name: str) -> None:
             try:
                 info = zc.get_service_info(type_, name)
-                if info and info.addresses:
-                    ip = socket.inet_ntoa(info.addresses[0])
+                if not info:
+                    return
 
-                    if ip in seen_ips:
-                        return
-                    seen_ips.add(ip)
+                ipv4_addresses = info.parsed_addresses(IPVersion.V4Only)
+                if not ipv4_addresses:
+                    return
+                ip = ipv4_addresses[0]
 
-                    device_type = "unknown"
-                    castable = False
-                    icon = "📱"
+                device_type, icon = _classify_mdns_service(type_)
 
-                    if "_airplay" in type_ or "_raop" in type_:
-                        device_type = "airplay"
-                        castable = True
-                        icon = "🍎"
-                    elif "_googlecast" in type_:
-                        device_type = "chromecast"
-                        castable = True
-                        icon = "📺"
-                    elif "_spotify" in type_:
-                        device_type = "spotify"
-                        icon = "🎵"
-                    elif "_homekit" in type_ or "_hap" in type_:
-                        device_type = "homekit"
-                        icon = "🏠"
-                    elif "_companion" in type_ or "_sleep-proxy" in type_:
-                        device_type = "apple"
-                        icon = "🍎"
-                    elif "_smb" in type_ or "_afp" in type_:
-                        device_type = "file-share"
-                        icon = "📁"
-                    elif "_printer" in type_ or "_ipp" in type_:
-                        device_type = "printer"
-                        icon = "🖨️"
-                    elif "_ssh" in type_:
-                        device_type = "computer"
-                        icon = "💻"
-                    elif "_workstation" in type_:
-                        device_type = "computer"
-                        icon = "💻"
-                    elif "_http" in type_:
-                        device_type = "web"
-                        icon = "🌐"
+                friendly_name = name.split(".")[0] if name else f"Device ({ip})"
+                if info.properties:
+                    raw_model = info.properties.get(b'model', b'')
+                    model = raw_model.decode('utf-8', errors='ignore') if isinstance(raw_model, bytes) else str(raw_model)
+                    if model:
+                        friendly_name = f"{friendly_name} ({model})"
 
-                    friendly_name = name.split(".")[0] if name else f"Device ({ip})"
+                # tv-cast only supports DLNA casting; mDNS-only services are informational.
+                candidate = {
+                    'name': friendly_name,
+                    'ip': ip,
+                    'port': info.port,
+                    'type': device_type,
+                    'castable': False,
+                    'service': type_,
+                }
 
-                    if info.properties:
-                        model = info.properties.get(b'model', b'').decode(
-                            'utf-8', errors='ignore')
-                        if model:
-                            friendly_name = f"{friendly_name} ({model})"
-
-                    devices.append({
-                        'name': friendly_name,
-                        'ip': ip,
-                        'port': info.port,
-                        'type': device_type,
-                        'castable': castable,
-                        'service': type_,
-                    })
-                    print(f"   {icon} {friendly_name} ({ip})")
-
-            except (AttributeError, ValueError, IndexError):
+                with lock:
+                    existing = devices_by_ip.get(ip)
+                    if existing is None:
+                        devices_by_ip[ip] = candidate
+                        print(f"   {icon} {friendly_name} ({ip})")
+                    elif _MDNS_TYPE_PRIORITY.get(device_type, 0) > _MDNS_TYPE_PRIORITY.get(existing.get('type', 'unknown'), 0):
+                        devices_by_ip[ip] = candidate
+            except (AttributeError, ValueError, IndexError, OSError):
                 pass
 
         def remove_service(self, zc: Zeroconf, type_: str, name: str) -> None:
@@ -172,22 +215,26 @@ def discover_mdns_devices(timeout: int = 5) -> List[Dict[str, Any]]:
             pass
 
     zc = Zeroconf()
-    listener = MyListener()
+    try:
+        listener = MyListener()
 
-    browsers = []
-    for service_type in service_types:
-        try:
-            browser = ServiceBrowser(zc, service_type, listener)
-            browsers.append(browser)
-        except Exception:
-            pass
+        browsers = []
+        for service_type in service_types:
+            try:
+                browser = ServiceBrowser(zc, service_type, listener)
+                browsers.append(browser)
+            except Exception:
+                pass
 
-    time.sleep(timeout)
-    zc.close()
-    return devices
+        time.sleep(timeout)
+    finally:
+        zc.close()
+
+    with lock:
+        return list(devices_by_ip.values())
 
 
-def get_mac_vendor(mac: str) -> Optional[str]:
+def get_mac_vendor(mac: str) -> str | None:
     """Get vendor name from MAC address prefix."""
     vendors = {
         "00:1A:79": "Tesla",
@@ -216,48 +263,55 @@ def get_mac_vendor(mac: str) -> Optional[str]:
     return vendors.get(mac_prefix)
 
 
-def scan_arp_table() -> List[Dict[str, str]]:
-    """Get devices from the system ARP table."""
-    import platform
-    import re
-
+def _parse_arp_output(output: str) -> list[dict[str, str]]:
+    """Parse IP and MAC pairs from arp or `ip neigh` output."""
     devices = []
+    for line in output.split('\n'):
+        ip_match = re.search(r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})', line)
+        mac_match = re.search(
+            r'([0-9a-fA-F]{1,2}[:-][0-9a-fA-F]{1,2}[:-][0-9a-fA-F]{1,2}[:-][0-9a-fA-F]{1,2}[:-][0-9a-fA-F]{1,2}[:-][0-9a-fA-F]{1,2})',
+            line,
+        )
 
-    try:
-        if platform.system().lower() == "darwin":
-            result = subprocess.run(["arp", "-a"], capture_output=True, text=True, timeout=5)
-        elif platform.system().lower() == "windows":
-            result = subprocess.run(["arp", "-a"], capture_output=True, text=True, timeout=5)
-        else:
-            result = subprocess.run(["arp", "-n"], capture_output=True, text=True, timeout=5)
+        if ip_match and mac_match:
+            ip = ip_match.group(1)
+            mac = mac_match.group(1).upper().replace("-", ":")
 
-        if result.returncode == 0:
-            for line in result.stdout.split('\n'):
-                ip_match = re.search(r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})', line)
-                mac_match = re.search(
-                    r'([0-9a-fA-F]{1,2}[:-][0-9a-fA-F]{1,2}[:-][0-9a-fA-F]{1,2}[:-][0-9a-fA-F]{1,2}[:-][0-9a-fA-F]{1,2}[:-][0-9a-fA-F]{1,2})',
-                    line
-                )
+            if "(incomplete)" in line.lower() or "failed" in line.lower() or mac == "FF:FF:FF:FF:FF:FF":
+                continue
 
-                if ip_match and mac_match:
-                    ip = ip_match.group(1)
-                    mac = mac_match.group(1).upper().replace("-", ":")
-
-                    if "(incomplete)" in line.lower() or mac == "FF:FF:FF:FF:FF:FF":
-                        continue
-
-                    devices.append({'ip': ip, 'mac': mac})
-    except Exception:
-        pass
-
+            devices.append({'ip': ip, 'mac': mac})
     return devices
 
 
-def discover_network_hosts(timeout: int = 10) -> List[Dict[str, Any]]:
+def scan_arp_table() -> list[dict[str, str]]:
+    """Get devices from the system ARP/neighbor table."""
+    system = platform.system().lower()
+    if system in ("darwin", "windows"):
+        commands = [["arp", "-a"]]
+    else:
+        commands = [["arp", "-n"], ["ip", "neigh"]]
+
+    for cmd in commands:
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=5, check=False)
+            if result.returncode == 0:
+                return _parse_arp_output(result.stdout)
+        except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+            continue
+
+    return []
+
+
+def discover_network_hosts(
+    timeout: int = 10,
+    partial_results: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
     """Discover all hosts on the local network via ARP + ping sweep."""
 
-    devices = []
-    seen_ips = set()
+    devices: list[dict[str, Any]] = partial_results if partial_results is not None else []
+    seen_ips: set[str] = {d['ip'] for d in devices if d.get('ip')}
+    deadline = time.monotonic() + max(1, timeout)
 
     print("   📋 Checking ARP table...")
 
@@ -265,10 +319,10 @@ def discover_network_hosts(timeout: int = 10) -> List[Dict[str, Any]]:
 
     for dev in arp_devices:
         ip = dev['ip']
-        if ip not in seen_ips:
+        if ip not in seen_ips and _is_usable_host_ip(ip):
             seen_ips.add(ip)
 
-            hostname = get_hostname(ip)
+            hostname = get_hostname(ip) if time.monotonic() < deadline else None
             vendor = get_mac_vendor(dev.get('mac', ''))
 
             if hostname:
@@ -298,10 +352,13 @@ def discover_network_hosts(timeout: int = 10) -> List[Dict[str, Any]]:
                 'castable': False,
             })
 
-    # Ping sweep
-    subnet = get_local_subnet()
+    # Ping sweep (skip if local IP fell back to loopback or time budget exhausted)
     my_ip = get_local_ip()
+    remaining = deadline - time.monotonic()
+    if not _is_usable_host_ip(my_ip) or remaining <= 0:
+        return devices
 
+    subnet = get_local_subnet()
     print(f"   🔍 Ping sweep on {subnet}.0/24...")
 
     ips_to_scan = [
@@ -309,21 +366,21 @@ def discover_network_hosts(timeout: int = 10) -> List[Dict[str, Any]]:
         if f"{subnet}.{i}" not in seen_ips and f"{subnet}.{i}" != my_ip
     ]
 
-    def check_host(ip):
+    def check_host(ip: str) -> str | None:
         if ping_host(ip, timeout=0.5):
             return ip
         return None
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=50)
+    try:
         futures = {executor.submit(check_host, ip): ip for ip in ips_to_scan}
-
         try:
-            for future in concurrent.futures.as_completed(futures, timeout=timeout):
+            for future in concurrent.futures.as_completed(futures, timeout=remaining):
                 try:
                     ip = future.result(timeout=0.1)
                     if ip and ip not in seen_ips:
                         seen_ips.add(ip)
-                        hostname = get_hostname(ip)
+                        hostname = get_hostname(ip) if time.monotonic() < deadline else None
                         name = hostname.split('.')[0] if hostname else "Device"
 
                         devices.append({
@@ -337,72 +394,81 @@ def discover_network_hosts(timeout: int = 10) -> List[Dict[str, Any]]:
                     pass
         except concurrent.futures.TimeoutError:
             pass
-
-        for future in futures:
-            future.cancel()
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
 
     return devices
 
 
-async def discover_all_devices(timeout: int = 8) -> List[Dict[str, Any]]:
+async def discover_all_devices(timeout: int = 8) -> list[dict[str, Any]]:
     """Discover all devices on the network (ARP, ping, mDNS, DLNA)."""
 
-    print(f"🔍 Scanning network for all devices...")
+    print("🔍 Scanning network for all devices...")
     print()
 
-    all_devices = []
-    seen_ips = set()
+    all_devices: list[dict[str, Any]] = []
+    seen_ips: set[str] = set()
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
-    mdns_devices = []
-    network_devices = []
-    dlna_devices = []
+    effective_timeout = max(1, timeout)
+    dlna_timeout = max(1, min(effective_timeout, 4))
+    mdns_timeout = max(1, min(effective_timeout, 4))
+    network_timeout = max(1, effective_timeout)
 
-    with concurrent.futures.ThreadPoolExecutor() as pool:
-        mdns_future = loop.run_in_executor(pool, discover_mdns_devices, 3)
-        network_future = loop.run_in_executor(pool, discover_network_hosts, 6)
+    mdns_devices: list[dict[str, Any]] = []
+    partial_network_devices: list[dict[str, Any]] = []
+    network_devices: list[dict[str, Any]] = []
+    dlna_devices: list[dict[str, Any]] = []
+
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=2)
+    try:
+        mdns_future = loop.run_in_executor(pool, discover_mdns_devices, mdns_timeout)
+        network_future = loop.run_in_executor(
+            pool, discover_network_hosts, network_timeout, partial_network_devices
+        )
 
         try:
-            dlna_devices = await asyncio.wait_for(discover_dlna_devices(3), timeout=5)
-        except (asyncio.TimeoutError, Exception):
+            dlna_devices = await asyncio.wait_for(
+                discover_dlna_devices(dlna_timeout),
+                timeout=dlna_timeout + 2,
+            )
+        except Exception:
             pass
 
         try:
-            mdns_devices = await asyncio.wait_for(mdns_future, timeout=5)
-        except (asyncio.TimeoutError, Exception):
+            mdns_devices = await asyncio.wait_for(mdns_future, timeout=mdns_timeout + 2)
+        except Exception:
             pass
 
         try:
-            network_devices = await asyncio.wait_for(network_future, timeout=10)
-        except (asyncio.TimeoutError, Exception):
-            pass
+            network_devices = await asyncio.wait_for(network_future, timeout=network_timeout + 2)
+        except Exception:
+            network_devices = list(partial_network_devices)
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
 
     # Merge results
     for dev in dlna_devices:
         ip = dev.get('ip')
-        if ip and ip not in seen_ips:
+        if _is_usable_host_ip(ip) and ip not in seen_ips:
             seen_ips.add(ip)
             all_devices.append(dev)
 
     for dev in mdns_devices:
         ip = dev.get('ip')
-        if ip and ip not in seen_ips:
+        if _is_usable_host_ip(ip) and ip not in seen_ips:
             seen_ips.add(ip)
             all_devices.append(dev)
-        elif ip in seen_ips:
-            for existing in all_devices:
-                if existing.get('ip') == ip:
-                    if dev.get('castable') and not existing.get('castable'):
-                        existing['castable'] = True
-                    break
 
     for dev in network_devices:
         ip = dev.get('ip')
-        if ip and ip not in seen_ips:
+        if not _is_usable_host_ip(ip):
+            continue
+        if ip not in seen_ips:
             seen_ips.add(ip)
             all_devices.append(dev)
-        elif ip in seen_ips:
+        else:
             for existing in all_devices:
                 if existing.get('ip') == ip:
                     if dev.get('mac') and not existing.get('mac'):
@@ -411,10 +477,6 @@ async def discover_all_devices(timeout: int = 8) -> List[Dict[str, Any]]:
                         existing['vendor'] = dev.get('vendor')
                     break
 
-    # Filter out multicast/broadcast
-    all_devices = [d for d in all_devices if not d.get('ip', '').startswith('224.')]
-
     print(f"\n✅ Found {len(all_devices)} device(s)")
 
     return all_devices
-

@@ -18,7 +18,7 @@ brew install uv
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
-sudo apt install ffmpeg nmap  # Debian/Ubuntu
+sudo apt install ffmpeg  # Debian/Ubuntu
 ```
 
 ## Setup
@@ -39,6 +39,11 @@ uv run python tv_cast.py video.mp4              # Cast video
 uv run python tv_cast.py video.mp4 -d 60        # Cast for 60 seconds
 uv run python tv_cast.py "https://youtube.com/watch?v=..."  # YouTube
 uv run python tv_cast.py --image photo.jpg      # Display image (10s)
+uv run python tv_cast.py --rio                  # Cast dancing RIO logo (15s)
+uv run python tv_cast.py --rio-live             # Live real-time dancing RIO stream
+uv run python tv_cast.py --tv-state             # Show what TV is currently showing
+uv run python tv_cast.py --tv-apps              # Pair once & list all installed TV apps
+uv run python tv_cast.py --rio --no-restore     # Skip auto-restoring previous TV app
 uv run python tv_cast.py --stop                 # Stop playback
 ```
 
@@ -74,7 +79,6 @@ uv run python tv_cast.py                        # Interactive menu
 | ------ | -------- | ----------------------------------------------- |
 | ffmpeg | ✅ Yes   | Video conversion to HLS                         |
 | deno   | Optional | YouTube format extraction (suppresses warnings) |
-| nmap   | Optional | Deep network device scanning                    |
 
 ## Safety & Responsibility
 

@@ -2,7 +2,7 @@
 
 import json
 import os
-from typing import Optional, Dict, List, Any
+from typing import Any
 
 # Settings
 HTTP_PORT = 8765
@@ -11,7 +11,7 @@ CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
 HLS_CACHE_DIR = os.path.join(CONFIG_DIR, "hls_cache")
 YOUTUBE_CACHE_DIR = os.path.join(CONFIG_DIR, "youtube")
 IMAGE_CACHE_DIR = os.path.join(CONFIG_DIR, "image_videos")
-FFMPEG_THREADS = 20
+FFMPEG_THREADS = 0  # 0 = let ffmpeg/libx264 auto-detect optimal thread count
 
 # Sample content
 SAMPLE_YOUTUBE_URL = "https://youtube.com/watch?v=yvsoeyqCIU8"
@@ -28,22 +28,35 @@ _state = {
 }
 
 
-def get_current_device() -> Optional[Dict[str, Any]]:
+def get_current_device() -> dict[str, Any] | None:
     """Get current selected device."""
     return _state['current_device']
 
 
-def set_current_device(device: Optional[Dict[str, Any]]) -> None:
-    """Set current selected device."""
+_PRESERVED_DEVICE_KEYS = ("samsung_token", "installed_apps")
+
+
+def set_current_device(device: dict[str, Any] | None) -> None:
+    """Set current selected device, preserving pairing metadata for the same IP."""
+    prev = _state['current_device']
+    if (
+        isinstance(device, dict)
+        and isinstance(prev, dict)
+        and device.get('ip')
+        and device.get('ip') == prev.get('ip')
+    ):
+        for key in _PRESERVED_DEVICE_KEYS:
+            if key in prev and key not in device:
+                device[key] = prev[key]
     _state['current_device'] = device
 
 
-def get_discovered_devices() -> List[Dict[str, Any]]:
+def get_discovered_devices() -> list[dict[str, Any]]:
     """Get list of discovered devices."""
     return _state['discovered_devices']
 
 
-def set_discovered_devices(devices: List[Dict[str, Any]]) -> None:
+def set_discovered_devices(devices: list[dict[str, Any]]) -> None:
     """Set list of discovered devices."""
     _state['discovered_devices'] = devices
 
@@ -85,29 +98,44 @@ def load_config() -> None:
 
 
 def save_config() -> None:
-    """Save current configuration."""
-    os.makedirs(CONFIG_DIR, exist_ok=True)
+    """Save current configuration with owner-only permissions."""
+    os.makedirs(CONFIG_DIR, mode=0o700, exist_ok=True)
+    try:
+        os.chmod(CONFIG_DIR, 0o700)
+    except OSError:
+        pass
 
     config = {
         'device': make_json_serializable(_state['current_device']),
         'discovered_devices': make_json_serializable(_state['discovered_devices']),
     }
-    with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
-        json.dump(config, f, indent=2)
+    fd = os.open(CONFIG_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            json.dump(config, f, indent=2)
+    except Exception:
+        raise
+    try:
+        os.chmod(CONFIG_FILE, 0o600)
+    except OSError:
+        pass
 
 
-def save_discovered_devices(devices: List[Dict[str, Any]]) -> None:
+def save_discovered_devices(devices: list[dict[str, Any]]) -> None:
     """Save discovered devices to config."""
-    existing_ips = {d.get('ip') for d in _state['discovered_devices']}
+    existing_ips = {d.get('ip') for d in _state['discovered_devices'] if d.get('ip')}
 
     for device in devices:
-        if device.get('ip') in existing_ips:
+        ip = device.get('ip')
+        if ip and ip in existing_ips:
             for i, existing in enumerate(_state['discovered_devices']):
-                if existing.get('ip') == device.get('ip'):
+                if existing.get('ip') == ip:
                     _state['discovered_devices'][i] = device
                     break
         else:
             _state['discovered_devices'].append(device)
+            if ip:
+                existing_ips.add(ip)
 
     save_config()
 
