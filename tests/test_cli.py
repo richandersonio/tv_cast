@@ -1,9 +1,11 @@
 """Tests for the command-line interface: dispatch, status output, and CLI commands."""
 
 import logging
+import signal
 
 import pytest
 
+from tv_cast import __main__ as main_mod
 from tv_cast import cli, config, conversion
 
 TV = {"name": "Living Room TV", "ip": "192.168.1.50", "castable": True}
@@ -41,7 +43,31 @@ def _record_async(calls, name, result=None):
     return fake
 
 
-# --- version / verbose -------------------------------------------------------
+# --- entry point, version, verbose -------------------------------------------------
+
+
+def test_main_preserves_default_sigint_behavior(monkeypatch):
+    registered_signals = []
+    monkeypatch.setattr(
+        main_mod.signal, "signal", lambda sig, handler: registered_signals.append(sig)
+    )
+    monkeypatch.setattr(main_mod.atexit, "register", lambda fn: None)
+    monkeypatch.setattr(main_mod, "run_cli", lambda: None)
+
+    main_mod.main()
+
+    # SIGINT must NOT be overridden with sys.exit; only SIGTERM is registered.
+    assert signal.SIGINT not in registered_signals
+    assert signal.SIGTERM in registered_signals
+
+
+def test_parser_validates_duration():
+    parser = cli.build_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args(["video.mp4", "-d", "-5"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(["video.mp4", "-d", "abc"])
+    assert parser.parse_args(["video.mp4", "-d", "15"]).duration == 15
 
 
 def test_version_flag_prints_package_version(capsys):
@@ -175,6 +201,14 @@ def test_list_devices_cli_groups_castable_and_marks_selection(capsys):
     assert "Living Room TV ← selected" in out
     assert "Other devices" in out
     assert "Phone" in out
+
+
+def test_set_device_by_ip_validates_address():
+    assert cli.set_device_by_ip("not-an-ip") is False
+    assert config.get_current_device() is None
+
+    assert cli.set_device_by_ip("192.168.1.99") is True
+    assert config.get_current_device()["ip"] == "192.168.1.99"
 
 
 def test_set_device_by_ip_reuses_discovered_device():

@@ -405,7 +405,7 @@ def image_to_video(image_path: str, duration: int = 10) -> str | None:
 
 
 def clear_cache() -> None:
-    """Clear all cached data (HLS conversions, YouTube downloads, image videos)."""
+    """Clear all cached data (HLS conversions, YouTube downloads, image and RIO videos)."""
     cleared = False
 
     if os.path.exists(HLS_CACHE_DIR):
@@ -422,10 +422,14 @@ def clear_cache() -> None:
             cleared = True
 
     if os.path.exists(IMAGE_CACHE_DIR):
-        count = count_image_cache_entries()
+        image_count = count_image_cache_entries(include_rio=False)
+        rio_count = count_rio_cache_entries()
         shutil.rmtree(IMAGE_CACHE_DIR)
-        if count > 0:
-            print(f"🗑️  Cleared {count} image video(s)")
+        if image_count > 0:
+            print(f"🗑️  Cleared {image_count} image video(s)")
+            cleared = True
+        if rio_count > 0:
+            print(f"🗑️  Cleared {rio_count} RIO animation(s)")
             cleared = True
 
     if not cleared:
