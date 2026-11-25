@@ -575,7 +575,11 @@ async def stop_youtube_on_tv(
     lounge_base: str = "https://www.youtube.com/api/lounge",
     timeout: float = 5.0,
 ) -> bool:
-    """Stop the video playing in the TV's YouTube app (Lounge stopVideo, then close the app)."""
+    """Stop the video in the TV's YouTube app, then close the app.
+
+    Sends Lounge ``stopVideo`` and always closes the app afterwards so the TV does
+    not stay on the YouTube home screen. Returns True if either step succeeded.
+    """
     stopped = await _send_lounge_command(
         ip,
         "stopVideo",
@@ -584,8 +588,6 @@ async def stop_youtube_on_tv(
         lounge_base=lounge_base,
         timeout=timeout,
     )
-    if stopped:
-        return True
 
     host = format_host_for_url(ip)
     for url in (
@@ -601,7 +603,7 @@ async def stop_youtube_on_tv(
             ):
                 if 200 <= resp.status < 300:
                     return True
-    return False
+    return stopped
 
 
 async def play_youtube_on_tv(
@@ -853,8 +855,10 @@ async def _launch_app_via_ws(
 async def _await_launch_confirmation(ws: Any, confirm_timeout: float) -> bool:
     """Wait for the TV to acknowledge ed.apps.launch.
 
-    Returns True when the TV confirms the launch, False on an explicit error. Some
-    firmware never replies; in that case the launch is treated as sent but unconfirmed.
+    Returns True when the TV confirms the launch, and False on an explicit error or
+    when the connection drops before any reply. Some firmware never replies; if the
+    connection stays open until the timeout, the launch is treated as sent but
+    unconfirmed.
     """
     loop = asyncio.get_running_loop()
     deadline = loop.time() + confirm_timeout
@@ -871,7 +875,8 @@ async def _await_launch_confirmation(ws: Any, confirm_timeout: float) -> bool:
             aiohttp.WSMsgType.CLOSED,
             aiohttp.WSMsgType.ERROR,
         ):
-            break
+            logger.debug("TV closed the connection before confirming the launch")
+            return False
         if msg.type != aiohttp.WSMsgType.TEXT:
             continue
         try:

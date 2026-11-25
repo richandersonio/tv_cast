@@ -134,6 +134,7 @@ async def test_restore_tv_state_falls_back_to_ws_launch_when_rest_fails():
             payload = msg.json()
             if payload.get("params", {}).get("event") == "ed.apps.launch":
                 launched.append(payload["params"]["data"])
+                await ws.send_json({"event": "ed.apps.launch", "data": 200})
                 break
         await ws.close()
         return ws
@@ -302,6 +303,7 @@ async def _start_ws_launch_server(reply):
         ({"event": "ed.apps.launch", "data": 200, "from": "host"}, True),
         ({"event": "ed.apps.launch", "data": 404, "from": "host"}, False),
         ({"event": "ms.error", "data": {"message": "unknown app"}}, False),
+        (None, False),
     ],
 )
 async def test_launch_app_via_ws_honours_tv_confirmation(reply, expected):
@@ -432,7 +434,7 @@ async def test_get_tv_state_cancels_app_probes_when_caller_is_cancelled():
 
 
 @pytest.mark.asyncio
-async def test_stop_youtube_on_tv_sends_lounge_stop_then_falls_back_to_closing_app():
+async def test_stop_youtube_on_tv_sends_lounge_stop_and_closes_app():
     commands: list[str] = []
     deleted: list[str] = []
     lounge_ok = {"value": True}
@@ -481,7 +483,9 @@ async def test_stop_youtube_on_tv_sends_lounge_stop_then_falls_back_to_closing_a
         }
         assert await tv_state.stop_youtube_on_tv("127.0.0.1", **kwargs) is True
         assert commands == ["stopVideo"]
-        assert deleted == []
+        assert deleted == [tv_state.YOUTUBE_APP_ID]
+
+        deleted.clear()
 
         lounge_ok["value"] = False
         assert await tv_state.stop_youtube_on_tv("127.0.0.1", **kwargs) is True
