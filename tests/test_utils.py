@@ -38,21 +38,21 @@ def test_is_youtube_url_rejects_non_youtube_and_spoofed_urls():
 
 def test_extract_youtube_video_id():
     assert (
-        extract_youtube_video_id("https://www.youtube.com/watch?v=TESTVIDEO01")
-        == "TESTVIDEO01"
+        extract_youtube_video_id("https://www.youtube.com/watch?v=yvsoeyqCIU8")
+        == "yvsoeyqCIU8"
     )
     assert (
-        extract_youtube_video_id("https://youtu.be/TESTVIDEO01?t=10") == "TESTVIDEO01"
+        extract_youtube_video_id("https://youtu.be/yvsoeyqCIU8?t=10") == "yvsoeyqCIU8"
     )
     assert (
-        extract_youtube_video_id("https://youtube.com/shorts/TESTVIDEO01")
-        == "TESTVIDEO01"
+        extract_youtube_video_id("https://youtube.com/shorts/yvsoeyqCIU8")
+        == "yvsoeyqCIU8"
     )
     assert (
-        extract_youtube_video_id("https://youtube.com/live/TESTVIDEO01")
-        == "TESTVIDEO01"
+        extract_youtube_video_id("https://youtube.com/live/yvsoeyqCIU8")
+        == "yvsoeyqCIU8"
     )
-    assert extract_youtube_video_id("https://example.com/watch?v=TESTVIDEO01") is None
+    assert extract_youtube_video_id("https://example.com/watch?v=yvsoeyqCIU8") is None
     assert extract_youtube_video_id("https://youtube.com/watch") is None
 
 
