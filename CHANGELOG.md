@@ -2,6 +2,12 @@
 
 Date-based history of key changes to `tv-cast`, newest first.
 
+## 2026-11-25
+
+- **Native YouTube casting — cleaner finish:** After a native YouTube cast stops, the TV's YouTube app now closes instead of staying on its home screen.
+- **App restore accuracy:** If the TV drops the connection before confirming an app launch, the restore is now reported as failed instead of successful.
+- **Security scanning:** CodeQL now scans the Python code and GitHub workflows on every pull request and weekly.
+
 ## 2026-11-22
 
 - **CLI:** Added `--version`, and `-v`/`--verbose` to show debug logs for errors that are normally skipped quietly. Use `uv run tv-cast`; the old `tv_cast.py` wrapper is gone.
