@@ -184,10 +184,10 @@ async def test_cast_video_native_youtube_stops_after_duration(monkeypatch):
     config.set_current_device({"name": "TV", "ip": "192.168.4.22"})
     try:
         ok = await casting.cast_video(
-            "https://www.youtube.com/watch?v=TESTVIDEO01", duration=1
+            "https://www.youtube.com/watch?v=yvsoeyqCIU8", duration=1
         )
         assert ok is True
-        assert called_native == [("192.168.4.22", "TESTVIDEO01")]
+        assert called_native == [("192.168.4.22", "yvsoeyqCIU8")]
         assert not called_download
         # Even with nothing to restore, the video must stop when the duration ends.
         assert stopped == ["192.168.4.22"]
@@ -230,7 +230,7 @@ async def test_cast_video_native_youtube_waits_for_ctrl_c_and_restores(monkeypat
     try:
         task = asyncio.create_task(
             casting.cast_video(
-                "https://www.youtube.com/watch?v=TESTVIDEO01", duration=0
+                "https://www.youtube.com/watch?v=yvsoeyqCIU8", duration=0
             )
         )
         await asyncio.sleep(0.2)
@@ -264,9 +264,9 @@ async def test_cast_video_falls_back_to_yt_dlp_when_native_youtube_fails(monkeyp
     old = config.get_current_device()
     config.set_current_device({"name": "TV", "ip": "192.168.4.22"})
     try:
-        ok = await casting.cast_video("https://www.youtube.com/watch?v=TESTVIDEO01")
+        ok = await casting.cast_video("https://www.youtube.com/watch?v=yvsoeyqCIU8")
         assert ok is False
-        assert called_download == ["https://www.youtube.com/watch?v=TESTVIDEO01"]
+        assert called_download == ["https://www.youtube.com/watch?v=yvsoeyqCIU8"]
     finally:
         config.set_current_device(old)
 

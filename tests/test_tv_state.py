@@ -244,14 +244,14 @@ async def test_get_and_resume_youtube_now_playing_via_dial_and_lounge():
 
         played = await tv_state.play_youtube_on_tv(
             "127.0.0.1",
-            "TESTVIDEO01",
+            "yvsoeyqCIU8",
             api_port=port,
             dial_port=port,
             lounge_base=f"{base}/api/lounge",
             oembed_base=f"{base}/oembed",
         )
         assert played is True
-        assert resumed_payloads[-1]["req0_videoId"] == "TESTVIDEO01"
+        assert resumed_payloads[-1]["req0_videoId"] == "yvsoeyqCIU8"
     finally:
         await runner.cleanup()
 
